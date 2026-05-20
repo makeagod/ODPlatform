@@ -46,6 +46,7 @@ dev = [
 
 [project.scripts]
 odp-init = "odp_platform.cli.init_project:initialize_project"
+odp-reset = "odp_platform.cli.reset_project:main"
 
 # Hatchling 配置
 [tool.hatch.build.targets.wheel]
