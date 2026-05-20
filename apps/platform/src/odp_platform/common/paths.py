@@ -34,16 +34,16 @@ def _find_workspace_root(
 # 计算一下ROOT_DIR根目录
 ROOT_DIR: Path = _find_workspace_root(Path(__file__))
 
-# 端代码目录 APP_DIR (platform 这个端的根)
-APP_DIR: Path = ROOT_DIR / "platform"
+# 端代码目录 APP_DIR (apps/platform 这个端的根)
+APP_DIR: Path = ROOT_DIR / "apps" / "platform"
 
 # Python 源码目录 (odp_platform 包)
 SRC_DIR: Path = APP_DIR / "src"
 
-# 共享资产(ROOT_DIR下，所有端都可以访问的文件)
+# 共享资产(ROOT_DIR 下，所有端都可以访问)
 DATA_DIR: Path = ROOT_DIR / "data"
-MODELS_DIR: Path = DATA_DIR / "models"
-RUNS_DIR : Path = DATA_DIR / "runs"
+MODELS_DIR: Path = ROOT_DIR / "models"
+RUNS_DIR: Path = ROOT_DIR / "runs"
 
 # 模型有子目录
 PRETRAINED_MODELS_DIR: Path = MODELS_DIR / "pretrained"

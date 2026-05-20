@@ -1,0 +1,2 @@
+# 开发环境一键安装 (在项目根目录执行: pip install -r requirements-dev.txt)
+-e ./apps/platform[dev]

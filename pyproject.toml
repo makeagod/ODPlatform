@@ -30,7 +30,7 @@ dev = [
 line-length = 100
 target-version = "py310"
 src = [
-    "platform/src",
+    "apps/platform/src",
 ]
 
 [tool.ruff.lint]
@@ -61,7 +61,7 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 minversion = "7.0"
 testpaths = [
-    "platform/tests",
+    "apps/platform/tests",
 ]
 python_files = ["test_*.py"]
 addopts = ["-v", "--strict-markers", "--tb=short"]
