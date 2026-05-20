@@ -1,2 +1,8 @@
-# 开发环境一键安装 (在项目根目录执行: pip install -r requirements-dev.txt)
+# 开发环境依赖 (在项目根目录执行)
+#   pip install -r requirements-dev.txt
+#
+# 安装后可用的 CLI:
+#   odp-init   — 初始化目录结构
+#   odp-reset  — 重置训练产物 (默认 dry-run, 加 --yes 才真正删除)
+
 -e ./apps/platform[dev]
