@@ -1,10 +1,11 @@
 #!/usr/bin/env python
-# -*- coding:utf-8 -*-
+# -*- coding: utf-8 -*-
 # @FileName  :paths.py
 # @Time      :2026/5/18 11:53:15
 # @Author    :雨霓同学
 # @Project   :ODPlatform
-# @Function  :
+# @Function  :项目路径核心管理模块（已集成 D3 数据流水线路径）
+
 from pathlib import Path
 from typing import List, Tuple
 
@@ -31,6 +32,7 @@ def _find_workspace_root(
             if (parent / marker).exists():
                 return parent
     raise FileNotFoundError(f"No {markers} found in {start}, 请确认仓库的根目录是否存在{WORKSPACE_MARKER}文件")
+
 
 # 计算一下ROOT_DIR根目录
 ROOT_DIR: Path = _find_workspace_root(Path(__file__))
@@ -80,6 +82,20 @@ META_DIR: Path = ROOT_DIR / ".odp-meta"
 META_LOGGING_DIR: Path = META_DIR / "logs"
 
 
+# =====================================================================
+# 🛠️ 【关键修复】D3 阶段追加的数据流水线核心输出路径（必须定义在函数上方）
+# =====================================================================
+
+# 转换后 YOLO 格式数据集的最终落地根目录 (data/processed/)
+PROCESSED_DATA_DIR: Path = ROOT_DIR / "data" / "processed"
+
+# 自动生成的 Ultralytics 训练配置 YAML 文件的存放目录 (apps/platform/configs/datasets/)
+DATASET_CONFIGS_DIR: Path = ROOT_DIR / "apps" / "platform" / "configs" / "datasets"
+
+# 转换期间临时中转目录（给像 COCO converter 这种需要临时组装 JSON 的模块用）
+TRANSFORM_TEMP_DIR: Path = ROOT_DIR / "data" / "temp"
+
+
 def get_dirs_to_initialize() -> List[Path]:
     """
     返回项目启动时需要确保存在的所有目录列表
@@ -104,6 +120,10 @@ def get_dirs_to_initialize() -> List[Path]:
         SCRIPTS_DIR,
         DOCS_DIR,
         META_LOGGING_DIR,
+        # 此时函数运行时能完美读取到这三个变量了
+        PROCESSED_DATA_DIR,
+        DATASET_CONFIGS_DIR,
+        TRANSFORM_TEMP_DIR
     ]
 
 
