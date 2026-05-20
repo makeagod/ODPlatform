@@ -5,7 +5,8 @@
 import datetime
 import yaml
 from pathlib import Path
-from typing import List, Dict
+# 💡 【修复】显式导入 Any 避免 NameError
+from typing import List, Dict, Any
 
 
 class YoloYamlWriter:
@@ -43,7 +44,8 @@ class YoloYamlWriter:
             "val": "val/images",
             "test": "test/images",
 
-            # 2. 类别字典映射: {0: 'classA', 1: 'classB'}
+            # 2. 类别数量与映射 (Ultralytics 标准字段)
+            "nc": len(classes),
             "names": {idx: name for idx, name in enumerate(classes)},
 
             # 3. ⚠️ 注入 ODP 专属的高级元数据审计块，用于数据回溯与规范性检查

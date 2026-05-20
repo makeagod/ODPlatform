@@ -14,8 +14,9 @@ class SampleItem:
     image_path: Path
     # 对应的标准化标注数据（包含类别与绝对坐标 bbox）
     annotations: List[Dict[str, Any]]
-    # 图片的宽、高
+    # 图片的宽、高 (Pascal VOC 的 size 节点)
     width: int
+    height: int
     # 标注对应的原始格式（如 pascal_voc）
     raw_format: str
 
@@ -31,6 +32,10 @@ class DatasetManifest:
     @property
     def size(self) -> int:
         return len(self.items)
+
+    def get_all_items(self) -> List[SampleItem]:
+        """返回清单内全部样本 (供切分器使用)"""
+        return list(self.items)
 
     def to_dict_list(self) -> List[Dict[str, Any]]:
         """转换为可序列化的字典列表，方便流式中转"""

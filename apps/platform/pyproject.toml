@@ -1,56 +1,21 @@
-# ODPlatform - platform 端配置
-
-[build-system]
-requires = ["hatchling>=1.18.0"]
-build-backend = "hatchling.build"
-
 [project]
 name = "odp-platform"
-dynamic = ["version"]
-description = "ODPlatform - 目标检测开发平台核心引擎"
-requires-python = ">=3.11"
-license = { text = "MIT" }
-authors = [
-    { name = "ODPlatform Team", email = "sx12101184@qq.com" },
-]
-keywords = [
-    "ODPlatform",
-    "OD",
-    "目标检测",
-    "目标检测开发平台",
-    "目标检测开发平台核心引擎",
-]
-classifiers = [
-    "Development Status :: 4 - Beta",
-    "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
-    "Operating System :: OS Independent",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
-    "Topic :: Software Development :: Libraries :: Python Modules",
-]
+version = "0.1.0"
+description = "ODPlatform Platform Management System"
+readme = "README.md"
+requires-python = ">=3.10"
 
+# 1. 系统底层与 D3 阶段所需的全部依赖大件（合并在一个列表里）
 dependencies = [
-    "colorlog>=6.7.0",
+    "click>=8.0",
+    "scikit-learn>=1.0",
+    "ultralytics>=8.0",
     "pyyaml>=6.0",
-    "pydantic>=2.4.2",
+    "pillow>=9.0",
 ]
 
-[project.optional-dependencies]
-dev = [
-    "pytest>=7.4.0",
-    "pytest-cov>=4.1.0",
-    "ruff>=0.1.0",
-    "mypy>=1.5.0",
-]
-
+# 2. 挂载我们平台的三个核心入口点命令（完美并存）
 [project.scripts]
-odp-init = "odp_platform.cli.init_project:initialize_project"
+odp-init = "odp_platform.cli.init_project:main"
 odp-reset = "odp_platform.cli.reset_project:main"
-
-# Hatchling 配置
-[tool.hatch.build.targets.wheel]
-packages = ["src/odp_platform"]
-
-[tool.hatch.version]
-path = "src/odp_platform/_version.py"
+odp-transform = "odp_platform.cli.transform_data:main"

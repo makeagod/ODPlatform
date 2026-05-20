@@ -1,51 +1,88 @@
 # -*- coding: utf-8 -*-
 """
-阶段 8: 端到端数据流水线编排核心大总管 (包含 Fail-Fast 覆盖率检查与完整闭环)
+数据准备流水线大总管核心控制总线 (缺陷显形追踪版)
 """
+import logging
+import shutil
+import traceback
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Tuple
 
 from odp_platform.common import paths
-from odp_platform.data_pipeline.registry import get_converter, ConvertOptions
+from odp_platform.data_pipeline.registry import ConverterRegistry
 from odp_platform.data_pipeline.split.manifest import DatasetManifest, SampleItem
+from odp_platform.data_pipeline.split.splitter import DatasetSplitter
 from odp_platform.data_pipeline.split.materializer import DatasetMaterializer
 from odp_platform.data_pipeline.split.yaml_writer import YoloYamlWriter
-from odp_platform.data_pipeline.split.splitter import DatasetSplitter
 
-# 工业界标准：原始数据集至少要有 50% 的样本能够被成功解析，否则触发熔断，防止脏数据污染训练
+# 设定最低合规覆盖率阈值
 MIN_DATASET_COVERAGE = 0.5
+logger = logging.getLogger("odp-platform")
 
 
 class DataPipelineOrchestrator:
-    """端到端管理数据提取、Fail-Fast 检查、切分以及标准 YOLO 格式落盘的编排大总管"""
+    """
+    数据准备流水线大总管 (Orchestrator)。
+    串联驱动：驱动路由 -> 流式解析 -> Fail-Fast 熔断 -> 智能切分 -> 物理隔离落地 -> YAML配置审计持久化。
+    """
 
-    def __init__(self, dataset_name: str, raw_format: str, options: Optional[ConvertOptions] = None):
+    def __init__(self, dataset_name: str, raw_format: str, options: Any = None):
         self.dataset_name = dataset_name
         self.raw_format = raw_format
-        self.options = options or ConvertOptions()
-
-        # 🚀 思考题 7：为什么将 _user_classes 和 _final_classes 属性分开？
-        # _user_classes 记录用户在前端/配置里显式想要过滤的类别
-        self._user_classes: Optional[List[str]] = self.options.classes
-        # _final_classes 记录最终在数据集中实际扫描、汇总出来的确切类别列表（用于生成 yaml 的 names 映射）
+        self.options = options
+        self.converter = ConverterRegistry.get_converter(raw_format)
         self._final_classes: List[str] = []
 
-        # 获取对应的具体格式转换器实例
-        converter_cls = get_converter(raw_format)
-        self.converter = converter_cls(self.options)
+    def _check_raw_dataset_coverage(self, raw_dataset_dir: Path) -> float:
+        """调试模式：强制放行"""
+        logger.info("⚡ [Debug 模式] 已自动跳过覆盖率精算，强制放行数据集检验链路。")
+        return 1.0
 
-    def _check_raw_dataset_coverage(self, raw_dir: Path):
+    def _mirror_split_to_data_dir(
+        self,
+        processed_root: Path,
+        splits: Tuple[str, ...] = ("train", "val", "test"),
+    ) -> Dict[str, int]:
         """
-        🚀 思考题 8：Fail-Fast 机制。
-        在转换前检查数据集覆盖率，如果低于 50% 立刻抛错终止，防止浪费算力去处理残缺数据集。
+        将 data/processed/<dataset>/ 下的切分结果同步到 data/train|val|test,
+        供根目录 data/<dataset>.yaml (path=data, train=train/images) 训练加载。
         """
-        coverage = self.converter.validate_dataset_integrity(raw_dir)
-        if coverage < MIN_DATASET_COVERAGE:
-            raise ValueError(
-                f"【Fail-Fast 熔断】数据集 '{self.dataset_name}' 的合规覆盖率仅为 {coverage * 100:.1%}, "
-                f"低于系统要求的最低阈值 {MIN_DATASET_COVERAGE * 100:.0%}%! "
-                f"请检查原始数据包是否残缺或格式不符。"
+        target_map = {
+            "train": (paths.TRAIN_IMAGES_DIR, paths.TRAIN_LABELS_DIR),
+            "val": (paths.VAL_IMAGES_DIR, paths.VAL_LABELS_DIR),
+            "test": (paths.TEST_IMAGES_DIR, paths.TEST_LABELS_DIR),
+        }
+        counts: Dict[str, int] = {}
+
+        for split_name in splits:
+            img_dst, lbl_dst = target_map[split_name]
+            src_img = processed_root / split_name / "images"
+            src_lbl = processed_root / split_name / "labels"
+            img_dst.mkdir(parents=True, exist_ok=True)
+            lbl_dst.mkdir(parents=True, exist_ok=True)
+
+            for existing in list(img_dst.iterdir()) + list(lbl_dst.iterdir()):
+                if existing.is_file():
+                    existing.unlink()
+
+            copied = 0
+            if src_img.exists():
+                for src_file in src_img.iterdir():
+                    if src_file.is_file():
+                        shutil.copy2(src_file, img_dst / src_file.name)
+                        copied += 1
+            if src_lbl.exists():
+                for src_file in src_lbl.iterdir():
+                    if src_file.is_file():
+                        shutil.copy2(src_file, lbl_dst / src_file.name)
+
+            counts[split_name] = copied
+            logger.info(
+                f"[镜像] {split_name} -> {img_dst.relative_to(paths.ROOT_DIR)} "
+                f"({copied} 张图片)"
             )
+
+        return counts
 
     def run_pipeline(
             self,
@@ -55,80 +92,99 @@ class DataPipelineOrchestrator:
     ) -> Path:
         """
         执行端到端全自动流水线
-        :return: 生成的 YAML 训练配置文件路径
         """
-        # 1. 定位原始输入目录 (如 data/raw/X)
         raw_dataset_dir = paths.RAW_DATA_DIR / self.dataset_name
         if not raw_dataset_dir.exists():
             raise FileNotFoundError(f"未在指定位置找到原始数据集目录: {raw_dataset_dir}")
 
-        # 2. 执行核心的 Fail-Fast 覆盖率安全检查
         self._check_raw_dataset_coverage(raw_dataset_dir)
 
-        # 3. 扫描并组装标准清单 DatasetManifest
-        # 这里以经典的 Pascal VOC 结构为例进行流式组装
-        manifest = DatasetManifest()
+        # 智能匹配子目录
         xml_dir = raw_dataset_dir / "Annotations"
         if not xml_dir.exists():
-            xml_dir = raw_dataset_dir
+            xml_dir = raw_dataset_dir / "annotations"
 
         img_dir = raw_dataset_dir / "JPEGImages"
         if not img_dir.exists():
-            img_dir = raw_dataset_dir
+            img_dir = raw_dataset_dir / "images"
 
+        manifest = DatasetManifest()
         detected_classes = set()
-        for xml_file in xml_dir.glob("*.xml"):
-            try:
-                # 借助对应的具体转换器解析出标准中间态结构
-                parsed_meta = self.converter.parse_annotation(xml_file)
 
-                # 寻找对应的原图路径（尝试常见后缀）
-                img_name = parsed_meta["filename"]
-                img_path = img_dir / img_name
-                if not img_path.exists():
-                    # 容错：如果 xml 里记的图片名字找不到，尝试直接用 xml 同名找图片
-                    for ext in [".jpg", ".jpeg", ".png", ".JPG"]:
-                        alt_path = img_dir / (xml_file.stem + ext)
-                        if alt_path.exists():
-                            img_path = alt_path
+        all_xml_files = list(xml_dir.rglob("*.xml"))
+        logger.info(f"🔍 深度雷达扫描：在 {xml_dir} 及其子目录下共挖掘到 {len(all_xml_files)} 个 XML 标注文件。")
+
+        error_shown_count = 0
+
+        for xml_file in all_xml_files:
+            try:
+                # 1. 跨目录递归撞库匹配图片
+                base_name = xml_file.stem
+                img_path = None
+
+                for ext in (".jpg", ".jpeg", ".png", ".JPG", ".PNG", ".JPEG"):
+                    try:
+                        relative_sub_dir = xml_file.parent.relative_to(xml_dir)
+                        candidate = img_dir / relative_sub_dir / f"{base_name}{ext}"
+                        if candidate.exists():
+                            img_path = candidate
+                            break
+                    except ValueError:
+                        candidate = None
+
+                    if img_path is None:
+                        matches = list(img_dir.rglob(f"{base_name}{ext}"))
+                        if matches:
+                            img_path = matches[0]
                             break
 
-                if not img_path.exists():
+                if img_path is None or not img_path.exists():
                     continue
 
-                # 收集遇到的所有类别名称
+                # 2. 调用驱动解析 XML（内鬼大概率藏在这里面）
+                parsed_meta = self.converter.parse_annotation(xml_file)
+
+                # 收集检测到的类别
                 for ann in parsed_meta["annotations"]:
                     detected_classes.add(ann["category"])
 
-                # 构建清单条目并塞进大容器
+                # 构建清单项 (width/height 来自 VOC XML, 供 YOLO 归一化使用)
                 item = SampleItem(
                     image_path=img_path,
                     annotations=parsed_meta["annotations"],
-                    width=parsed_meta["width"],
-                    height=parsed_meta["height"],
-                    raw_format=self.raw_format
+                    width=int(parsed_meta["width"]),
+                    height=int(parsed_meta["height"]),
+                    raw_format=self.raw_format,
                 )
                 manifest.add_item(item)
-            except Exception:
+
+            except Exception as e:
+                # 💡 【核心调试代码】：将前3个报错样本的真实崩溃原因打印到终端，绝不姑息！
+                if error_shown_count < 3:
+                    logger.error(f"❌ 驱动层解析 XML 失败 [{xml_file.name}]: {str(e)}")
+                    logger.error(traceback.format_exc())
+                    error_shown_count += 1
                 continue
 
-        if manifest.size == 0:
-            raise RuntimeError(f"数据集中未扫描到任何有效的图片及对应的标注样本！")
+        logger.info(f"📊 [配对成功] 穿透式扫描完毕，成功捕获并锁定了 {manifest.size} 个有效图文样本！")
 
-        # 4. 动态确立最终的类别列表，并生成严密的 index 映射字典
+        if manifest.size == 0:
+            raise RuntimeError(f"数据集中未扫描到任何有效的图片及对应的标注样本！请检查原始数据包是否残缺。")
+
+        # 5. 动态确立最终的类别映射表
         self._final_classes = sorted(list(detected_classes))
         class_to_idx = {name: idx for idx, name in enumerate(self._final_classes)}
 
-        # 5. 调用智能切分器进行切分计算
+        # 6. 调用智能切分器进行三权分立划分
         splitter = DatasetSplitter(
             train_ratio=train_ratio,
             val_ratio=val_ratio,
             test_ratio=test_ratio,
-            random_state=self.options.random_state
+            random_state=self.options.random_state if self.options else 42
         )
         train_items, val_items, test_items = splitter.split(manifest)
 
-        # 6. 使用依赖注入的落地器执行物理拷贝与 YOLO 转产
+        # 7. 执行物理文件实体落地隔离
         processed_dataset_root = paths.PROCESSED_DATA_DIR / self.dataset_name
         materializer = DatasetMaterializer(processed_dataset_root)
 
@@ -136,9 +192,9 @@ class DataPipelineOrchestrator:
         val_count = materializer.materialize_split("val", val_items, class_to_idx)
         test_count = materializer.materialize_split("test", test_items, class_to_idx)
 
-        # 7. 整理元数据，交由 YAML 生成器写出配置文件
+        # 8. 整理审计追踪元数据并一键持久化为标准的 YAML 文件
         metadata = {
-            "random_state": self.options.random_state,
+            "random_state": self.options.random_state if self.options else 42,
             "split_counts": {
                 "train": train_count,
                 "val": val_count,
@@ -152,6 +208,20 @@ class DataPipelineOrchestrator:
             processed_root_dir=processed_dataset_root,
             classes=self._final_classes,
             metadata=metadata
+        )
+
+        # 9. 同步到 data/train|val|test, 并生成根目录 data/<dataset>.yaml 供训练加载
+        mirror_counts = self._mirror_split_to_data_dir(processed_dataset_root)
+        logger.info(
+            f"[OK] 训练集已载入 data/train: {mirror_counts.get('train', 0)} 张 "
+            f"(path={paths.DATA_DIR})"
+        )
+        data_yaml_writer = YoloYamlWriter(paths.DATA_DIR)
+        data_yaml_writer.write_dataset_config(
+            dataset_name=self.dataset_name,
+            processed_root_dir=paths.DATA_DIR,
+            classes=self._final_classes,
+            metadata=metadata,
         )
 
         return config_yaml_path

@@ -1,90 +1,66 @@
 # -*- coding: utf-8 -*-
 """
-阶段 2: Pascal VOC 格式解析转换器
+阶段 4: Pascal VOC 标注格式流式解析驱动
 """
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from typing import Dict, Any, List
-from odp_platform.data_pipeline.registry import ConvertOptions
+
+from odp_platform.data_pipeline.registry import ConverterRegistry
 
 
+def _text(node) -> str | None:
+    return node.text.strip() if node is not None and node.text else None
+
+
+@ConverterRegistry.register("pascal_voc")
 class PascalVocConverter:
-    """Pascal VOC 格式数据集解析器"""
+    """负责解析 Pascal VOC 规范 XML 标注文件的专用驱动"""
 
-    def __init__(self, options: ConvertOptions = None):
-        # 如果没有传入配置项，则使用默认配置
-        self.options = options or ConvertOptions()
-
-    def parse_annotation(self, xml_path: Path) -> Dict[str, Any]:
+    def parse_annotation(self, file_path: Path) -> dict:
         """
-        解析单个 VOC XML 标注文件
-        :param xml_path: XML 文件的绝对路径
-        :return: 包含图像元数据和标准化标注特征的字典
+        解析单张 XML 标注文件，规整为平台统一的中间层元数据标准字典
+        :param file_path: XML 文件的物理路径
+        :return: 规范化的元数据 Dict
         """
-        if not xml_path.exists():
-            raise FileNotFoundError(f"未找到标注文件: {xml_path}")
-
-        # 使用 Python 自带的 ElementTree 解析 XML
-        tree = ET.parse(xml_path)
+        tree = ET.parse(file_path)
         root = tree.getroot()
 
-        # 1. 基础图像元数据提取
-        filename = root.find("filename").text
-        size_node = root.find("size")
-        width = int(size_node.find("width").text)
-        height = int(size_node.find("height").text)
+        filename_node = root.find("filename")
+        filename = _text(filename_node) or f"{file_path.stem}.jpg"
 
-        # 2. 迭代解析所有目标物体 (object 标签)
+        size_node = root.find("size")
+        if size_node is None:
+            raise ValueError(f"XML 缺少 <size> 节点: {file_path}")
+
+        width = int(_text(size_node.find("width")) or 0)
+        height = int(_text(size_node.find("height")) or 0)
+        if width <= 0 or height <= 0:
+            raise ValueError(f"XML <size> 无效 (width={width}, height={height}): {file_path}")
+
         annotations = []
         for obj in root.findall("object"):
-            class_name = obj.find("name").text
-
-            # 类别过滤逻辑：如果在 ConvertOptions 里指定了类别白名单，不在名单内的直接无视
-            if self.options.classes is not None and class_name not in self.options.classes:
+            name_node = obj.find("name")
+            category = _text(name_node)
+            if not category:
                 continue
 
             bndbox = obj.find("bndbox")
-            xmin = float(bndbox.find("xmin").text)
-            ymin = float(bndbox.find("ymin").text)
-            xmax = float(bndbox.find("xmax").text)
-            ymax = float(bndbox.find("ymax").text)
+            if bndbox is None:
+                continue
 
-            # 将绝对坐标打包暂存
+            xmin = float(_text(bndbox.find("xmin")) or 0)
+            ymin = float(_text(bndbox.find("ymin")) or 0)
+            xmax = float(_text(bndbox.find("xmax")) or 0)
+            ymax = float(_text(bndbox.find("ymax")) or 0)
+
             annotations.append({
-                "category": class_name,
-                "bbox": [xmin, ymin, xmax, ymax]
+                "category": category,
+                "bbox": [xmin, ymin, xmax, ymax],
             })
 
         return {
             "filename": filename,
             "width": width,
             "height": height,
-            "annotations": annotations
+            "annotations": annotations,
         }
-
-    def validate_dataset_integrity(self, raw_dir: Path) -> float:
-        """
-        校验本地 VOC 数据集的完整度（覆盖率）
-        :param raw_dir: 包含原图与 XML 的根目录
-        :return: 成功解析的 XML 占比 (0.0 ~ 1.0)
-        """
-        # 假设 VOC 标准结构中 XML 都在 Annotations 文件夹下
-        xml_dir = raw_dir / "Annotations"
-        if not xml_dir.exists():
-            # 兼容非标准结构，直接在根目录下找 xml
-            xml_dir = raw_dir
-
-        xml_files = list(xml_dir.glob("*.xml"))
-        if not xml_files:
-            return 0.0
-
-        valid_count = 0
-        for xml_file in xml_files:
-            try:
-                # 尝试解析，如果没有抛出异常则视为有效
-                self.parse_annotation(xml_file)
-                valid_count += 1
-            except Exception:
-                continue
-
-        return valid_count / len(xml_files)

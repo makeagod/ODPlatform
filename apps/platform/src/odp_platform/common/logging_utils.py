@@ -18,7 +18,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 from colorlog import ColoredFormatter
-
+from pathlib import Path
 
 # 项目根 logger 名 = 顶层 Python 包名
 # 业务模块写 getLogger("odp_platform.xxx.yyy") 会通过冒泡找到这里挂的 handler
@@ -77,7 +77,7 @@ def get_logger(
     # ============================================================
     # 2. 准备日志目录
     # ============================================================
-    log_dir: Path = base_path / log_type
+    log_dir: Path = Path(base_path) / log_type
     log_dir.mkdir(parents=True, exist_ok=True)
 
     # ============================================================

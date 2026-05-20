@@ -51,11 +51,15 @@ class DatasetMaterializer:
         if not items:
             return 0
 
-        # 1. 创建 YOLO 标准的物理目录树
+        # 1. 创建 YOLO 标准的物理目录树 (先清空旧文件, 避免重复运行后样本堆积)
         images_output_dir = self.output_dir / split_name / "images"
         labels_output_dir = self.output_dir / split_name / "labels"
-        images_output_dir.mkdir(parents=True, exist_ok=True)
-        labels_output_dir.mkdir(parents=True, exist_ok=True)
+        for out_dir in (images_output_dir, labels_output_dir):
+            if out_dir.exists():
+                for old_file in out_dir.iterdir():
+                    if old_file.is_file():
+                        old_file.unlink()
+            out_dir.mkdir(parents=True, exist_ok=True)
 
         success_count = 0
         for item in items:
