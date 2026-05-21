@@ -95,6 +95,21 @@ DATASET_CONFIGS_DIR: Path = ROOT_DIR / "apps" / "platform" / "configs" / "datase
 # 转换期间临时中转目录（给像 COCO converter 这种需要临时组装 JSON 的模块用）
 TRANSFORM_TEMP_DIR: Path = ROOT_DIR / "data" / "temp"
 
+# D4 data_validation 运行产物
+VALIDATION_RUNS_DIR: Path = RUNS_DIR / "data_validation"
+
+
+def dataset_yaml_path(dataset_name: str) -> Path:
+    """D3 产出的 Ultralytics 训练 YAML 路径。"""
+    return DATASET_CONFIGS_DIR / f"{dataset_name}.yaml"
+
+
+def validation_run_dir(run_id: str) -> Path:
+    """单次 validate 运行的输出目录（含 report.json）。"""
+    run_dir = VALIDATION_RUNS_DIR / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+    return run_dir
+
 
 def get_dirs_to_initialize() -> List[Path]:
     """
@@ -123,7 +138,8 @@ def get_dirs_to_initialize() -> List[Path]:
         # 此时函数运行时能完美读取到这三个变量了
         PROCESSED_DATA_DIR,
         DATASET_CONFIGS_DIR,
-        TRANSFORM_TEMP_DIR
+        TRANSFORM_TEMP_DIR,
+        VALIDATION_RUNS_DIR,
     ]
 
 
