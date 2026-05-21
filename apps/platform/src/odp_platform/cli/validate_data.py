@@ -38,7 +38,23 @@ def main() -> None:
     level = logging.DEBUG if args.verbose else logging.INFO
     get_logger(base_path=LOGGING_DIR, log_type="data_validation", log_level=level)
 
-    yaml_path = dataset_yaml_path(args.dataset) if args.dataset else args.yaml.resolve()
+    if args.dataset:
+        yaml_path = dataset_yaml_path(args.dataset)
+        if not yaml_path.exists():
+            logger.error(
+                "数据集配置不存在: %s\n"
+                "请先准备 data/raw/%s/ 并运行:\n"
+                "  odp-transform --dataset %s --format <pascal_voc|coco|yolo>",
+                yaml_path,
+                args.dataset,
+                args.dataset,
+            )
+            sys.exit(2)
+    else:
+        yaml_path = args.yaml.resolve()
+        if not yaml_path.exists():
+            logger.error("YAML 不存在: %s", yaml_path)
+            sys.exit(2)
 
     try:
         report = validate_dataset(
