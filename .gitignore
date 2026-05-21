@@ -45,35 +45,28 @@ htmlcov/
 .ruff_cache/
 
 # ============================================================
-# ODPlatform 专属(Stage 1 Monorepo 路径)
+# ODPlatform — 数据集 / 模型 / 训练产物（不进 Git）
 # ============================================================
 
-# 数据集不进 git(走外部存储或 Git LFS)
-data/raw/
-data/train/
-data/val/
-data/test/
+# 全部本地数据（原始、处理后、train/val/test 镜像）
+data/**
 !data/README.md
-!data/.gitkeep
 
-# 模型权重不进 git
-models/pretrained/*.pt
-models/checkpoints/*.pt
-models/checkpoints/*/
-!models/pretrained/README.md
-!models/checkpoints/README.md
+# 模型权重
+models/
 
-# 训练运行结果(每次自动产生新目录)
-runs/*
-!runs/README.md
+# 训练运行结果
+runs/
 
-# 端私有日志(运行时产生,各机器不同)
+# 转换临时目录
+data/temp/
+
+# 端私有日志
 apps/platform/logging/
 *.log
 
-# 临时文件
-tmp/
-temp/
+# 元工具审计日志
+.odp-meta/
 
 # ============================================================
 # 大文件 / 二进制
@@ -81,6 +74,20 @@ temp/
 *.pkl
 *.h5
 *.npz
+*.pt
+*.pth
+*.onnx
+*.zip
+*.tar
+*.tar.gz
 
-# 工具元数据(reset/doctor 等元工具的审计日志,本地运行历史)
-.odp-meta/
+# 本地参考/工具（勿提交）
+_ref_data_pipeline/
+bfg-*.jar
+main.py
+
+# ============================================================
+# 临时文件
+# ============================================================
+tmp/
+temp/
