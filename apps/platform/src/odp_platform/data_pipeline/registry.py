@@ -1,52 +1,85 @@
-# -*- coding: utf-8 -*-
-"""
-阶段 4: 转换驱动延迟加载注册表 (解耦上游格式驱动)
-"""
+"""data_pipeline 注册表 + 统一参数包 + 能力声明。"""
+from __future__ import annotations
+
+import importlib
 import logging
-# 💡 【核心修复】显式导入 Any 避免 NameError
-from typing import Dict, Type, List, Any
+import pkgutil
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Callable, Dict, List, Optional, Tuple
 
-logger = logging.getLogger("odp-platform")
+from odp_platform.common.constants import Task
+
+logger = logging.getLogger(__name__)
 
 
-class ConverterRegistry:
-    """
-    统一格式驱动注册表 (Registry 模式)
-    负责解耦和动态路由：上游格式解析驱动注册到此，大总管根据入参一键调取。
-    """
-    _registry: Dict[str, Type] = {}
+@dataclass
+class ConvertOptions:
+    """所有 converter 共用的参数包。"""
+    task: str = Task.DETECT
+    classes: Optional[List[str]] = None
+    coco_cls91to80: bool = False
+    random_state: int = 42
 
-    @classmethod
-    def register(cls, raw_format: str):
-        """
-        类装饰器：用于在各个具体驱动（如 pascal_voc.py）顶部动态注册驱动
-        :param raw_format: 注册的格式名称小写 (例如 'pascal_voc', 'coco')
-        """
 
-        def decorator(sub_cls):
-            cls._registry[raw_format.lower()] = sub_cls
-            return sub_cls
+ConverterFunc = Callable[[Path, Path, ConvertOptions], List[str]]
 
-        return decorator
 
-    @classmethod
-    def get_converter(cls, raw_format: str) -> Any:
-        """
-        网关路由方法：根据传入格式，动态实例化并返回对应的转换驱动
-        :param raw_format: 格式名称 (如 'pascal_voc')
-        """
-        fmt_key = raw_format.lower()
-        if fmt_key not in cls._registry:
-            raise ValueError(
-                f"❌ 平台暂不支持的源数据格式: '{raw_format}'。"
-                f"当前已激活注册的能力矩阵为: {list(cls._registry.keys())}"
-            )
+@dataclass(frozen=True)
+class ConverterEntry:
+    func: ConverterFunc
+    supported_tasks: Tuple[str, ...]
 
-        # 延迟加载实例化驱动
-        converter_cls = cls._registry[fmt_key]
-        return converter_cls()
+    def supports(self, task: str) -> bool:
+        return task in self.supported_tasks
 
-    @classmethod
-    def get_supported_formats(cls) -> List[str]:
-        """获取当前系统已成功挂载的所有格式列表"""
-        return list(cls._registry.keys())
+
+_REGISTRY: Dict[str, ConverterEntry] = {}
+
+
+def register(
+    format_name: str,
+    supported_tasks: Tuple[str, ...] = (Task.DETECT,),
+) -> Callable[[ConverterFunc], ConverterFunc]:
+    def decorator(func: ConverterFunc) -> ConverterFunc:
+        if format_name in _REGISTRY:
+            logger.warning(f"格式 {format_name} 被重复注册, 后者覆盖前者")
+        _REGISTRY[format_name] = ConverterEntry(
+            func=func,
+            supported_tasks=tuple(supported_tasks),
+        )
+        return func
+    return decorator
+
+
+def get_converter(format_name: str) -> ConverterEntry:
+    _lazy_init()
+    key = format_name.lower()
+    if key not in _REGISTRY:
+        raise ValueError(
+            f"未注册的格式: {format_name!r}。已注册: {sorted(_REGISTRY.keys())}"
+        )
+    return _REGISTRY[key]
+
+
+def list_capabilities() -> Dict[str, Tuple[str, ...]]:
+    _lazy_init()
+    return {fmt: entry.supported_tasks for fmt, entry in _REGISTRY.items()}
+
+
+_LAZY_INITIALIZED = False
+
+
+def _lazy_init() -> None:
+    global _LAZY_INITIALIZED
+    if _LAZY_INITIALIZED:
+        return
+
+    from odp_platform.data_pipeline import core
+
+    for module_info in pkgutil.iter_modules(core.__path__):
+        if module_info.name.startswith("_"):
+            continue
+        importlib.import_module(f"{core.__name__}.{module_info.name}")
+
+    _LAZY_INITIALIZED = True

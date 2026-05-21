@@ -1,42 +1,30 @@
 # -*- coding: utf-8 -*-
-"""
-阶段 5: 数据集样本清单实体定义
-"""
-import dataclasses
+"""划分结果的数据载体。"""
+from __future__ import annotations
+
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List, Tuple
+
+Pair = Tuple[Path, Path]
+PairList = List[Pair]
 
 
-@dataclasses.dataclass
-class SampleItem:
-    """单个图片样本的标准化元数据"""
-    # 原始图片的绝对路径
-    image_path: Path
-    # 对应的标准化标注数据（包含类别与绝对坐标 bbox）
-    annotations: List[Dict[str, Any]]
-    # 图片的宽、高 (Pascal VOC 的 size 节点)
-    width: int
-    height: int
-    # 标注对应的原始格式（如 pascal_voc）
-    raw_format: str
+@dataclass
+class SplitManifest:
+    train: PairList = field(default_factory=list)
+    val: PairList = field(default_factory=list)
+    test: PairList = field(default_factory=list)
 
+    train_rate: float = 0.0
+    val_rate: float = 0.0
+    test_rate: float = 0.0
+    random_state: int = 0
 
-class DatasetManifest:
-    """由多个 SampleItem 组成的数据集样本总清单"""
-    def __init__(self, items: List[SampleItem] = None):
-        self.items = items or []
-
-    def add_item(self, item: SampleItem):
-        self.items.append(item)
-
-    @property
-    def size(self) -> int:
-        return len(self.items)
-
-    def get_all_items(self) -> List[SampleItem]:
-        """返回清单内全部样本 (供切分器使用)"""
-        return list(self.items)
-
-    def to_dict_list(self) -> List[Dict[str, Any]]:
-        """转换为可序列化的字典列表，方便流式中转"""
-        return [dataclasses.asdict(item) for item in self.items]
+    def summary(self) -> dict:
+        return {
+            "train": len(self.train),
+            "val": len(self.val),
+            "test": len(self.test),
+            "total": len(self.train) + len(self.val) + len(self.test),
+        }

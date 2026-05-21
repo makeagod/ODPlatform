@@ -1,73 +1,93 @@
 # -*- coding: utf-8 -*-
-"""
-阶段 5: 数据集智能切分器 (带浮点数余数最大化分配算法)
-"""
-import math
+"""数据集智能切分器。"""
+from __future__ import annotations
+
 import random
-from typing import List, Tuple
-from odp_platform.data_pipeline.split.manifest import DatasetManifest, SampleItem
+from typing import List
+
+from odp_platform.data_pipeline.split.manifest import PairList, SplitManifest
+
+RATE_EPSILON = 1e-9
 
 
-class DatasetSplitter:
-    """将总清单按比例切分为三大子集的计算器"""
+def split_pairs(
+    pairs: PairList,
+    train_rate: float,
+    val_rate: float,
+    test_rate: float | None = None,
+    random_state: int = 42,
+) -> SplitManifest:
+    """
+    将 (image, label) 对按比例切分为 train / val / test。
 
-    def __init__(self, train_ratio: float = 0.7, val_ratio: float = 0.2, test_ratio: float = 0.1,
-                 random_state: int = 42):
-        if not math.isclose(train_ratio + val_ratio + test_ratio, 1.0, rel_tol=1e-9):
-            raise ValueError(f"数据集切分比例之和必须为 1.0，当前: {train_ratio} + {val_ratio} + {test_ratio}")
+    :param train_rate: 训练集比例
+    :param val_rate: 验证集比例
+    :param test_rate: 测试集比例; 为 None 时自动取 1 - train_rate - val_rate
+    """
+    if test_rate is None:
+        test_rate = 1.0 - train_rate - val_rate
 
-        self.train_ratio = train_ratio
-        self.val_ratio = val_ratio
-        self.test_ratio = test_ratio
-        self.random_state = random_state
+    total_rate = train_rate + val_rate + test_rate
+    if total_rate > 1.0 + RATE_EPSILON:
+        raise ValueError(
+            f"切分比例之和不能超过 1.0, 当前: {train_rate}+{val_rate}+{test_rate}"
+        )
+    if train_rate < 0 or val_rate < -RATE_EPSILON or test_rate < -RATE_EPSILON:
+        raise ValueError("切分比例不能为负")
 
-    def split(self, manifest: DatasetManifest) -> Tuple[List[SampleItem], List[SampleItem], List[SampleItem]]:
-        """执行切分计算"""
-        items = manifest.get_all_items()
-        total_count = len(items)
-        if total_count == 0:
-            return [], [], []
+    n = len(pairs)
+    manifest = SplitManifest(
+        train_rate=train_rate,
+        val_rate=val_rate,
+        test_rate=max(test_rate, 0.0),
+        random_state=random_state,
+    )
 
-        # 浅拷贝并使用固定随机种子打乱顺序，确保结果可复现
-        shuffled_items = list(items)
-        random.seed(self.random_state)
-        random.shuffle(shuffled_items)
+    if n == 0:
+        return manifest
 
-        # 1. 基础分配（直接取整）
-        train_count = int(total_count * self.train_ratio)
-        val_count = int(total_count * self.val_ratio)
-        test_count = int(total_count * self.test_ratio)
+    if n < 3:
+        manifest.train = list(pairs)
+        return manifest
 
-        # 2. 余数分配（最大余数法，防止因为取整漏掉样本）
-        allocated = train_count + val_count + test_count
-        remainder = total_count - allocated
+    shuffled = list(pairs)
+    rng = random.Random(random_state)
+    rng.shuffle(shuffled)
 
-        if remainder > 0:
-            # 计算各自的小数点残余
-            diffs = [
-                ("train", (total_count * self.train_ratio) - train_count),
-                ("val", (total_count * self.val_ratio) - val_count),
-                ("test", (total_count * self.test_ratio) - test_count),
-            ]
-            # 按小数残余从大到小排序
-            diffs.sort(key=lambda x: x[1], reverse=True)
+    train_n = int(n * train_rate)
+    val_n = int(n * val_rate)
+    test_n = int(n * test_rate)
 
-            # 将多出来的样本依次分给残余最大的子集
-            for i in range(remainder):
-                split_name = diffs[i][0]
-                if split_name == "train":
-                    train_count += 1
-                elif split_name == "val":
-                    val_count += 1
-                elif split_name == "test":
-                    test_count += 1
+    allocated = train_n + val_n + test_n
+    remainder = n - allocated
+    if remainder > 0:
+        diffs = [
+            ("train", n * train_rate - train_n),
+            ("val", n * val_rate - val_n),
+            ("test", n * test_rate - test_n),
+        ]
+        diffs.sort(key=lambda x: x[1], reverse=True)
+        for i in range(remainder):
+            name = diffs[i][0]
+            if name == "train":
+                train_n += 1
+            elif name == "val":
+                val_n += 1
+            else:
+                test_n += 1
 
-        # 3. 按照计算好的精确边界切分数组
-        train_end = train_count
-        val_end = train_count + val_count
+    if test_rate <= RATE_EPSILON:
+        test_n = 0
 
-        train_items = shuffled_items[:train_end]
-        val_items = shuffled_items[train_end:val_end]
-        test_items = shuffled_items[val_end:]
+    if val_rate <= RATE_EPSILON:
+        val_n = 0
+        test_n = n - train_n
 
-        return train_items, val_items, test_items
+    train_end = min(train_n, n)
+    val_end = min(train_end + val_n, n)
+
+    manifest.train = shuffled[:train_end]
+    manifest.val = shuffled[train_end:val_end]
+    manifest.test = shuffled[val_end:val_end + test_n]
+
+    return manifest

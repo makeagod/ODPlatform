@@ -1,52 +1,86 @@
 # -*- coding: utf-8 -*-
 """
-数据准备流水线大总管核心控制总线 (缺陷显形追踪版)
+数据准备流水线 Orchestrator (课程架构版)
+
+流程: 格式转换 → 图文配对 → split_pairs → materialize → YAML
 """
+from __future__ import annotations
+
 import logging
 import shutil
-import traceback
 from pathlib import Path
-from typing import List, Dict, Any, Tuple
+from typing import Dict, List, Tuple
 
 from odp_platform.common import paths
-from odp_platform.data_pipeline.registry import ConverterRegistry
-from odp_platform.data_pipeline.split.manifest import DatasetManifest, SampleItem
-from odp_platform.data_pipeline.split.splitter import DatasetSplitter
-from odp_platform.data_pipeline.split.materializer import DatasetMaterializer
+from odp_platform.data_pipeline.registry import ConvertOptions
+from odp_platform.data_pipeline.service import convert_data_to_yolo
+from odp_platform.data_pipeline.split.manifest import PairList
+from odp_platform.data_pipeline.split.materializer import SplitOutputDirs, materialize
+from odp_platform.data_pipeline.split.splitter import split_pairs
 from odp_platform.data_pipeline.split.yaml_writer import YoloYamlWriter
 
-# 设定最低合规覆盖率阈值
-MIN_DATASET_COVERAGE = 0.5
 logger = logging.getLogger("odp-platform")
 
 
 class DataPipelineOrchestrator:
-    """
-    数据准备流水线大总管 (Orchestrator)。
-    串联驱动：驱动路由 -> 流式解析 -> Fail-Fast 熔断 -> 智能切分 -> 物理隔离落地 -> YAML配置审计持久化。
-    """
-
-    def __init__(self, dataset_name: str, raw_format: str, options: Any = None):
+    def __init__(self, dataset_name: str, raw_format: str, options: ConvertOptions | None = None):
         self.dataset_name = dataset_name
-        self.raw_format = raw_format
-        self.options = options
-        self.converter = ConverterRegistry.get_converter(raw_format)
+        self.raw_format = raw_format.lower()
+        self.options = options or ConvertOptions()
         self._final_classes: List[str] = []
 
-    def _check_raw_dataset_coverage(self, raw_dataset_dir: Path) -> float:
-        """调试模式：强制放行"""
-        logger.info("⚡ [Debug 模式] 已自动跳过覆盖率精算，强制放行数据集检验链路。")
-        return 1.0
+    def _resolve_raw_dirs(self, raw_root: Path) -> Tuple[Path, Path, Path]:
+        xml_dir = raw_root / "Annotations"
+        if not xml_dir.exists():
+            xml_dir = raw_root / "annotations"
 
-    def _mirror_split_to_data_dir(
+        img_dir = raw_root / "JPEGImages"
+        if not img_dir.exists():
+            img_dir = raw_root / "images"
+
+        return raw_root, xml_dir, img_dir
+
+    def _collect_pairs(
         self,
-        processed_root: Path,
-        splits: Tuple[str, ...] = ("train", "val", "test"),
-    ) -> Dict[str, int]:
-        """
-        将 data/processed/<dataset>/ 下的切分结果同步到 data/train|val|test,
-        供根目录 data/<dataset>.yaml (path=data, train=train/images) 训练加载。
-        """
+        img_dir: Path,
+        labels_dir: Path,
+        annotation_dir: Path | None = None,
+    ) -> PairList:
+        pairs: PairList = []
+        label_map = {p.stem: p for p in labels_dir.glob("*.txt")}
+
+        if annotation_dir and annotation_dir.exists():
+            stems = [x.stem for x in annotation_dir.rglob("*.xml")]
+        else:
+            stems = list(label_map.keys())
+
+        for stem in stems:
+            lbl = label_map.get(stem)
+            if lbl is None:
+                continue
+
+            img_path = None
+            for ext in (".jpg", ".jpeg", ".png", ".JPG", ".PNG", ".JPEG"):
+                if annotation_dir and annotation_dir.exists():
+                    for xml in annotation_dir.rglob(f"{stem}.xml"):
+                        rel = xml.parent.relative_to(annotation_dir)
+                        candidate = img_dir / rel / f"{stem}{ext}"
+                        if candidate.exists():
+                            img_path = candidate
+                            break
+                if img_path is None:
+                    matches = list(img_dir.rglob(f"{stem}{ext}"))
+                    if matches:
+                        img_path = matches[0]
+                if img_path:
+                    break
+
+            if img_path and img_path.exists():
+                pairs.append((img_path, lbl))
+
+        return pairs
+
+    def _mirror_split_to_data_dir(self, processed_root: Path) -> Dict[str, int]:
         target_map = {
             "train": (paths.TRAIN_IMAGES_DIR, paths.TRAIN_LABELS_DIR),
             "val": (paths.VAL_IMAGES_DIR, paths.VAL_LABELS_DIR),
@@ -54,174 +88,110 @@ class DataPipelineOrchestrator:
         }
         counts: Dict[str, int] = {}
 
-        for split_name in splits:
-            img_dst, lbl_dst = target_map[split_name]
+        for split_name, (img_dst, lbl_dst) in target_map.items():
             src_img = processed_root / split_name / "images"
             src_lbl = processed_root / split_name / "labels"
             img_dst.mkdir(parents=True, exist_ok=True)
             lbl_dst.mkdir(parents=True, exist_ok=True)
 
-            for existing in list(img_dst.iterdir()) + list(lbl_dst.iterdir()):
-                if existing.is_file():
-                    existing.unlink()
+            for d in (img_dst, lbl_dst):
+                for f in d.iterdir():
+                    if f.is_file():
+                        f.unlink()
 
             copied = 0
             if src_img.exists():
-                for src_file in src_img.iterdir():
-                    if src_file.is_file():
-                        shutil.copy2(src_file, img_dst / src_file.name)
+                for f in src_img.iterdir():
+                    if f.is_file():
+                        shutil.copy2(f, img_dst / f.name)
                         copied += 1
             if src_lbl.exists():
-                for src_file in src_lbl.iterdir():
-                    if src_file.is_file():
-                        shutil.copy2(src_file, lbl_dst / src_file.name)
+                for f in src_lbl.iterdir():
+                    if f.is_file():
+                        shutil.copy2(f, lbl_dst / f.name)
 
             counts[split_name] = copied
             logger.info(
-                f"[镜像] {split_name} -> {img_dst.relative_to(paths.ROOT_DIR)} "
-                f"({copied} 张图片)"
+                f"[mirror] {split_name} -> {img_dst.relative_to(paths.ROOT_DIR)} ({copied} images)"
             )
-
         return counts
 
     def run_pipeline(
-            self,
-            train_ratio: float = 0.7,
-            val_ratio: float = 0.2,
-            test_ratio: float = 0.1
+        self,
+        train_ratio: float = 0.8,
+        val_ratio: float = 0.1,
+        test_ratio: float = 0.1,
     ) -> Path:
-        """
-        执行端到端全自动流水线
-        """
-        raw_dataset_dir = paths.RAW_DATA_DIR / self.dataset_name
-        if not raw_dataset_dir.exists():
-            raise FileNotFoundError(f"未在指定位置找到原始数据集目录: {raw_dataset_dir}")
+        raw_root = paths.RAW_DATA_DIR / self.dataset_name
+        if not raw_root.exists():
+            raise FileNotFoundError(f"未找到原始数据集: {raw_root}")
 
-        self._check_raw_dataset_coverage(raw_dataset_dir)
+        _, xml_dir, img_dir = self._resolve_raw_dirs(raw_root)
 
-        # 智能匹配子目录
-        xml_dir = raw_dataset_dir / "Annotations"
-        if not xml_dir.exists():
-            xml_dir = raw_dataset_dir / "annotations"
+        temp_labels = paths.TRANSFORM_TEMP_DIR / self.dataset_name / "labels"
+        if temp_labels.exists():
+            shutil.rmtree(temp_labels, ignore_errors=True)
+        temp_labels.mkdir(parents=True, exist_ok=True)
 
-        img_dir = raw_dataset_dir / "JPEGImages"
-        if not img_dir.exists():
-            img_dir = raw_dataset_dir / "images"
-
-        manifest = DatasetManifest()
-        detected_classes = set()
-
-        all_xml_files = list(xml_dir.rglob("*.xml"))
-        logger.info(f"🔍 深度雷达扫描：在 {xml_dir} 及其子目录下共挖掘到 {len(all_xml_files)} 个 XML 标注文件。")
-
-        error_shown_count = 0
-
-        for xml_file in all_xml_files:
-            try:
-                # 1. 跨目录递归撞库匹配图片
-                base_name = xml_file.stem
-                img_path = None
-
-                for ext in (".jpg", ".jpeg", ".png", ".JPG", ".PNG", ".JPEG"):
-                    try:
-                        relative_sub_dir = xml_file.parent.relative_to(xml_dir)
-                        candidate = img_dir / relative_sub_dir / f"{base_name}{ext}"
-                        if candidate.exists():
-                            img_path = candidate
-                            break
-                    except ValueError:
-                        candidate = None
-
-                    if img_path is None:
-                        matches = list(img_dir.rglob(f"{base_name}{ext}"))
-                        if matches:
-                            img_path = matches[0]
-                            break
-
-                if img_path is None or not img_path.exists():
-                    continue
-
-                # 2. 调用驱动解析 XML（内鬼大概率藏在这里面）
-                parsed_meta = self.converter.parse_annotation(xml_file)
-
-                # 收集检测到的类别
-                for ann in parsed_meta["annotations"]:
-                    detected_classes.add(ann["category"])
-
-                # 构建清单项 (width/height 来自 VOC XML, 供 YOLO 归一化使用)
-                item = SampleItem(
-                    image_path=img_path,
-                    annotations=parsed_meta["annotations"],
-                    width=int(parsed_meta["width"]),
-                    height=int(parsed_meta["height"]),
-                    raw_format=self.raw_format,
-                )
-                manifest.add_item(item)
-
-            except Exception as e:
-                # 💡 【核心调试代码】：将前3个报错样本的真实崩溃原因打印到终端，绝不姑息！
-                if error_shown_count < 3:
-                    logger.error(f"❌ 驱动层解析 XML 失败 [{xml_file.name}]: {str(e)}")
-                    logger.error(traceback.format_exc())
-                    error_shown_count += 1
-                continue
-
-        logger.info(f"📊 [配对成功] 穿透式扫描完毕，成功捕获并锁定了 {manifest.size} 个有效图文样本！")
-
-        if manifest.size == 0:
-            raise RuntimeError(f"数据集中未扫描到任何有效的图片及对应的标注样本！请检查原始数据包是否残缺。")
-
-        # 5. 动态确立最终的类别映射表
-        self._final_classes = sorted(list(detected_classes))
-        class_to_idx = {name: idx for idx, name in enumerate(self._final_classes)}
-
-        # 6. 调用智能切分器进行三权分立划分
-        splitter = DatasetSplitter(
-            train_ratio=train_ratio,
-            val_ratio=val_ratio,
-            test_ratio=test_ratio,
-            random_state=self.options.random_state if self.options else 42
+        convert_input = xml_dir if xml_dir.exists() else raw_root
+        logger.info(f"[1/4] 格式转换 {self.raw_format}: {convert_input} -> {temp_labels}")
+        self._final_classes = convert_data_to_yolo(
+            convert_input,
+            temp_labels,
+            self.raw_format,
+            self.options,
         )
-        train_items, val_items, test_items = splitter.split(manifest)
 
-        # 7. 执行物理文件实体落地隔离
-        processed_dataset_root = paths.PROCESSED_DATA_DIR / self.dataset_name
-        materializer = DatasetMaterializer(processed_dataset_root)
+        logger.info("[2/4] 图文配对")
+        pairs = self._collect_pairs(img_dir, temp_labels, convert_input)
+        logger.info(f"配对成功 {len(pairs)} 对")
 
-        train_count = materializer.materialize_split("train", train_items, class_to_idx)
-        val_count = materializer.materialize_split("val", val_items, class_to_idx)
-        test_count = materializer.materialize_split("test", test_items, class_to_idx)
+        if not pairs:
+            raise RuntimeError("未扫描到有效的图片及标注样本, 请检查 data/raw 目录结构")
 
-        # 8. 整理审计追踪元数据并一键持久化为标准的 YAML 文件
+        logger.info(f"[3/4] 切分 train={train_ratio} val={val_ratio} test={test_ratio}")
+        manifest = split_pairs(
+            pairs,
+            train_rate=train_ratio,
+            val_rate=val_ratio,
+            test_rate=test_ratio,
+            random_state=self.options.random_state,
+        )
+
+        processed_root = paths.PROCESSED_DATA_DIR / self.dataset_name
+        output_dirs = SplitOutputDirs(
+            train_images=processed_root / "train" / "images",
+            train_labels=processed_root / "train" / "labels",
+            val_images=processed_root / "val" / "images",
+            val_labels=processed_root / "val" / "labels",
+            test_images=processed_root / "test" / "images",
+            test_labels=processed_root / "test" / "labels",
+        )
+
+        logger.info(f"[4/4] 落盘 -> {processed_root}")
+        split_counts = materialize(manifest, output_dirs)
+
         metadata = {
-            "random_state": self.options.random_state if self.options else 42,
-            "split_counts": {
-                "train": train_count,
-                "val": val_count,
-                "test": test_count,
-                "total_input": manifest.size
-            }
+            "random_state": self.options.random_state,
+            "split_counts": {**split_counts, "total_input": len(pairs)},
         }
+
         yaml_writer = YoloYamlWriter(paths.DATASET_CONFIGS_DIR)
-        config_yaml_path = yaml_writer.write_dataset_config(
+        config_path = yaml_writer.write_dataset_config(
             dataset_name=self.dataset_name,
-            processed_root_dir=processed_dataset_root,
+            processed_root_dir=processed_root,
             classes=self._final_classes,
-            metadata=metadata
+            metadata=metadata,
         )
 
-        # 9. 同步到 data/train|val|test, 并生成根目录 data/<dataset>.yaml 供训练加载
-        mirror_counts = self._mirror_split_to_data_dir(processed_dataset_root)
-        logger.info(
-            f"[OK] 训练集已载入 data/train: {mirror_counts.get('train', 0)} 张 "
-            f"(path={paths.DATA_DIR})"
-        )
-        data_yaml_writer = YoloYamlWriter(paths.DATA_DIR)
-        data_yaml_writer.write_dataset_config(
+        mirror_counts = self._mirror_split_to_data_dir(processed_root)
+        logger.info(f"[OK] data/train 已载入 {mirror_counts.get('train', 0)} 张")
+
+        YoloYamlWriter(paths.DATA_DIR).write_dataset_config(
             dataset_name=self.dataset_name,
             processed_root_dir=paths.DATA_DIR,
             classes=self._final_classes,
             metadata=metadata,
         )
 
-        return config_yaml_path
+        return config_path

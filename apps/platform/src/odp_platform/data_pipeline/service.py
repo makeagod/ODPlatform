@@ -1,23 +1,27 @@
 # -*- coding: utf-8 -*-
-"""
-阶段 1: 数据流水线业务调度层
-"""
-from typing import Dict, Tuple
-from odp_platform.data_pipeline.registry import list_capabilities, get_converter, ConvertOptions
+"""数据流水线业务调度层。"""
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Dict, List, Tuple
+
+from odp_platform.data_pipeline.registry import ConvertOptions, get_converter, list_capabilities
 
 
 def get_pipeline_capabilities() -> Dict[str, Tuple[str, ...]]:
-    """
-    获取当前系统支持的数据处理能力矩阵（供 CLI 实时打印帮助文档）
-    """
     return list_capabilities()
 
 
-def validate_format_support(format_name: str, task: str = "detect") -> bool:
-    """
-    校验某个格式是否支持特定的计算机视觉任务
-    """
-    capabilities = get_pipeline_capabilities()
-    if format_name not in capabilities:
-        return False
-    return task in capabilities[format_name]
+def convert_data_to_yolo(
+    input_dir: Path,
+    output_labels_dir: Path,
+    annotation_format: str,
+    options: ConvertOptions,
+) -> List[str]:
+    entry = get_converter(annotation_format)
+    if not entry.supports(options.task):
+        raise ValueError(
+            f"格式 {annotation_format!r} 不支持 task={options.task!r}, "
+            f"支持: {entry.supported_tasks}"
+        )
+    return entry.func(input_dir, output_labels_dir, options)

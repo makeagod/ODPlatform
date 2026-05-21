@@ -1,66 +1,92 @@
 # -*- coding: utf-8 -*-
-"""
-阶段 4: Pascal VOC 标注格式流式解析驱动
-"""
+"""PASCAL VOC XML → YOLO txt converter。"""
+from __future__ import annotations
+
+import logging
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from typing import List
 
-from odp_platform.data_pipeline.registry import ConverterRegistry
+from odp_platform.common.constants import AnnotationFormat, Task
+from odp_platform.data_pipeline.registry import ConvertOptions, register
+
+logger = logging.getLogger(__name__)
 
 
-def _text(node) -> str | None:
-    return node.text.strip() if node is not None and node.text else None
+@register(AnnotationFormat.PASCAL_VOC, supported_tasks=(Task.DETECT,))
+def convert_voc(
+    input_dir: Path,
+    output_labels_dir: Path,
+    options: ConvertOptions,
+) -> List[str]:
+    xml_files = sorted(input_dir.rglob("*.xml"))
+    if not xml_files:
+        raise FileNotFoundError(f"在 {input_dir} 下未找到任何 XML")
+
+    output_labels_dir.mkdir(parents=True, exist_ok=True)
+    classes: List[str] = list(options.classes) if options.classes else []
+    auto_discover = not options.classes
+
+    n_ok = n_skip = 0
+    for xml_path in xml_files:
+        if _convert_one(xml_path, output_labels_dir, classes, auto_discover):
+            n_ok += 1
+        else:
+            n_skip += 1
+
+    logger.info(f"VOC 转换完成: {n_ok} 成功, {n_skip} 跳过, 类别 {len(classes)} 种")
+    return classes
 
 
-@ConverterRegistry.register("pascal_voc")
-class PascalVocConverter:
-    """负责解析 Pascal VOC 规范 XML 标注文件的专用驱动"""
+def _convert_one(
+    xml_path: Path,
+    output_labels_dir: Path,
+    classes: List[str],
+    auto_discover: bool,
+) -> bool:
+    try:
+        root = ET.parse(xml_path).getroot()
+    except ET.ParseError as e:
+        logger.warning(f"{xml_path.name} XML 损坏: {e}")
+        return False
 
-    def parse_annotation(self, file_path: Path) -> dict:
-        """
-        解析单张 XML 标注文件，规整为平台统一的中间层元数据标准字典
-        :param file_path: XML 文件的物理路径
-        :return: 规范化的元数据 Dict
-        """
-        tree = ET.parse(file_path)
-        root = tree.getroot()
+    size = root.find("size")
+    if size is None:
+        return False
+    w = float(size.findtext("width", "0"))
+    h = float(size.findtext("height", "0"))
+    if w <= 0 or h <= 0:
+        return False
 
-        filename_node = root.find("filename")
-        filename = _text(filename_node) or f"{file_path.stem}.jpg"
-
-        size_node = root.find("size")
-        if size_node is None:
-            raise ValueError(f"XML 缺少 <size> 节点: {file_path}")
-
-        width = int(_text(size_node.find("width")) or 0)
-        height = int(_text(size_node.find("height")) or 0)
-        if width <= 0 or height <= 0:
-            raise ValueError(f"XML <size> 无效 (width={width}, height={height}): {file_path}")
-
-        annotations = []
-        for obj in root.findall("object"):
-            name_node = obj.find("name")
-            category = _text(name_node)
-            if not category:
+    lines: List[str] = []
+    for obj in root.findall("object"):
+        name = obj.findtext("name")
+        if not name:
+            continue
+        if name not in classes:
+            if auto_discover:
+                classes.append(name)
+            else:
                 continue
+        cls_id = classes.index(name)
 
-            bndbox = obj.find("bndbox")
-            if bndbox is None:
-                continue
+        bbox = obj.find("bndbox")
+        if bbox is None:
+            continue
+        try:
+            xmin = float(bbox.findtext("xmin"))
+            ymin = float(bbox.findtext("ymin"))
+            xmax = float(bbox.findtext("xmax"))
+            ymax = float(bbox.findtext("ymax"))
+        except (TypeError, ValueError):
+            continue
 
-            xmin = float(_text(bndbox.find("xmin")) or 0)
-            ymin = float(_text(bndbox.find("ymin")) or 0)
-            xmax = float(_text(bndbox.find("xmax")) or 0)
-            ymax = float(_text(bndbox.find("ymax")) or 0)
+        cx = max(0.0, min(1.0, (xmin + xmax) / 2 / w))
+        cy = max(0.0, min(1.0, (ymin + ymax) / 2 / h))
+        bw = max(0.0, min(1.0, (xmax - xmin) / w))
+        bh = max(0.0, min(1.0, (ymax - ymin) / h))
+        lines.append(f"{cls_id} {cx:.6f} {cy:.6f} {bw:.6f} {bh:.6f}")
 
-            annotations.append({
-                "category": category,
-                "bbox": [xmin, ymin, xmax, ymax],
-            })
-
-        return {
-            "filename": filename,
-            "width": width,
-            "height": height,
-            "annotations": annotations,
-        }
+    out_txt = output_labels_dir / f"{xml_path.stem}.txt"
+    out_txt.write_text("\n".join(lines), encoding="utf-8")
+    return True

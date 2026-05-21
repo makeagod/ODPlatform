@@ -1,90 +1,84 @@
 # -*- coding: utf-8 -*-
-"""
-阶段 6: 划分数据集的物理实体落地器 (使用依赖注入模式)
-"""
+"""把 SplitManifest 落地到目标目录 (依赖注入, 不耦合 paths)。"""
+from __future__ import annotations
+
+import logging
 import shutil
+from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Dict, Any
-from odp_platform.data_pipeline.split.manifest import SampleItem
+
+from odp_platform.data_pipeline.split.manifest import PairList, SplitManifest
+
+logger = logging.getLogger(__name__)
 
 
-class DatasetMaterializer:
-    """负责将内存中的样本数据拷贝并标准化写入本地磁盘的执行器"""
+@dataclass(frozen=True)
+class SplitOutputDirs:
+    train_images: Path
+    train_labels: Path
+    val_images: Path
+    val_labels: Path
+    test_images: Path
+    test_labels: Path
 
-    def __init__(self, output_dir: Path):
-        """
-        通过构造函数注入目标落地根目录 (如 data/processed/dataset_name)
-        """
-        self.output_dir = output_dir
+    def mkdir_all(self) -> None:
+        for p in (
+            self.train_images, self.train_labels,
+            self.val_images, self.val_labels,
+            self.test_images, self.test_labels,
+        ):
+            p.mkdir(parents=True, exist_ok=True)
 
-    def _convert_to_yolo_line(self, ann: Dict[str, Any], img_width: int, img_height: int, class_to_idx: Dict[str, int]) -> str:
-        """将标准绝对坐标 bbox 转换为 YOLO 需要的归一化中心点宽高格式"""
-        category = ann["category"]
-        if category not in class_to_idx:
-            return ""  # 忽略未映射的类别
 
-        class_id = class_to_idx[category]
-        xmin, ymin, xmax, ymax = ann["bbox"]
+def _clear_files(directory: Path) -> None:
+    if not directory.exists():
+        return
+    for f in directory.iterdir():
+        if f.is_file():
+            f.unlink()
 
-        # 计算绝对中心点和宽高
-        box_w = xmax - xmin
-        box_h = ymax - ymin
-        x_center = xmin + box_w / 2.0
-        y_center = ymin + box_h / 2.0
 
-        # 归一化到 0 ~ 1 之间
-        x_norm = x_center / img_width
-        y_norm = y_center / img_height
-        w_norm = box_w / img_width
-        h_norm = box_h / img_height
+def materialize(manifest: SplitManifest, output_dirs: SplitOutputDirs) -> dict:
+    """把 manifest 的三组样本复制到 output_dirs。"""
+    output_dirs.mkdir_all()
 
-        return f"{class_id} {x_norm:.6f} {y_norm:.6f} {w_norm:.6f} {h_norm:.6f}\n"
+    counts = {
+        "train": _copy_pairs(
+            manifest.train,
+            output_dirs.train_images,
+            output_dirs.train_labels,
+        ),
+        "val": _copy_pairs(
+            manifest.val,
+            output_dirs.val_images,
+            output_dirs.val_labels,
+        ),
+        "test": _copy_pairs(
+            manifest.test,
+            output_dirs.test_images,
+            output_dirs.test_labels,
+        ),
+    }
 
-    def materialize_split(self, split_name: str, items: List[SampleItem], class_to_idx: Dict[str, int]) -> int:
-        """
-        将某一特定子集（train / val / test）物理写入磁盘
-        :param split_name: "train", "val" 或 "test"
-        :param items: 该子集分配到的 SampleItem 列表
-        :param class_to_idx: 类别名称到 YOLO 整数 ID 的映射表
-        :return: 成功落盘的样本总数
-        """
-        if not items:
-            return 0
+    logger.info(
+        f"materialize 完成: train={counts['train']}, "
+        f"val={counts['val']}, test={counts['test']}"
+    )
+    return counts
 
-        # 1. 创建 YOLO 标准的物理目录树 (先清空旧文件, 避免重复运行后样本堆积)
-        images_output_dir = self.output_dir / split_name / "images"
-        labels_output_dir = self.output_dir / split_name / "labels"
-        for out_dir in (images_output_dir, labels_output_dir):
-            if out_dir.exists():
-                for old_file in out_dir.iterdir():
-                    if old_file.is_file():
-                        old_file.unlink()
-            out_dir.mkdir(parents=True, exist_ok=True)
 
-        success_count = 0
-        for item in items:
-            src_image: Path = item.image_path
-            if not src_image.exists():
-                continue
+def _copy_pairs(pairs: PairList, images_dst: Path, labels_dst: Path) -> int:
+    _clear_files(images_dst)
+    _clear_files(labels_dst)
 
-            # 2. 安全拷贝原图到目标子集下
-            dest_image = images_output_dir / src_image.name
-            shutil.copy2(src_image, dest_image)
-
-            # 3. 生成对应的 YOLO 格式 .txt 标签文件
-            txt_name = src_image.stem + ".txt"
-            dest_txt = labels_output_dir / txt_name
-
-            yolo_lines = []
-            for ann in item.annotations:
-                line = self._convert_to_yolo_line(ann, item.width, item.height, class_to_idx)
-                if line:
-                    yolo_lines.append(line)
-
-            # 写入文件（如果是背景图，也会生成空的 txt 文件，符合 YOLO 规范）
-            with open(dest_txt, "w", encoding="utf-8") as f:
-                f.writelines(yolo_lines)
-
-            success_count += 1
-
-        return success_count
+    n_ok = 0
+    for img_src, lbl_src in pairs:
+        try:
+            if img_src.exists():
+                shutil.copy2(img_src, images_dst / img_src.name)
+            if lbl_src.exists():
+                shutil.copy2(lbl_src, labels_dst / lbl_src.name)
+            n_ok += 1
+        except OSError as e:
+            logger.warning(f"复制失败 {img_src.name}: {e}")
+    return n_ok
