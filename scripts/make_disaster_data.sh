@@ -28,12 +28,12 @@ for i in $(seq 1 5000); do
 done
 echo "  ✅ runs/exp_2026_05_10/tb_logs/ — 5000 个小文件(大量 inode)"
 
-# 4. logs/ 一些已存在日志(撞墙⑤的舞台)
-mkdir -p logs/training/2026-05-10
+# 4. apps/platform/logs/ 一些已存在日志(撞墙⑤的舞台)
+mkdir -p apps/platform/logs/training/2026-05-10
 for i in $(seq 1 50); do
-    echo "training run $i log content" > "logs/training/2026-05-10/run-${i}.log"
+    echo "training run $i log content" > "apps/platform/logs/training/2026-05-10/run-${i}.log"
 done
-echo "  ✅ logs/ — 50 份训练日志"
+echo "  ✅ apps/platform/logs/ — 50 份训练日志"
 
 echo ""
 echo "🎬 灾难现场准备就绪。"

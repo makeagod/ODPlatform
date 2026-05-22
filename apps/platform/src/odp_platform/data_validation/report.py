@@ -70,6 +70,22 @@ class ValidationReport:
             "overall_severity": self.overall_severity,
             "exit_code": self.exit_code,
             "counts_by_severity": self.counts_by_severity,
+            "dataset_info": {
+                "nc": self.snapshot.nc,
+                "classes": list(self.snapshot.class_names),
+                "task_type": self.snapshot.task_type,
+                "data_root": str(self.snapshot.data_root),
+                "splits": {
+                    split: {
+                        "image_count": st.image_count,
+                        "annotated_count": st.annotated_count,
+                        "total_instances": st.total_instances,
+                    }
+                    for split, st in self.snapshot.stats_per_split.items()
+                },
+                "total_images": self.snapshot.total_images,
+                "scan_warnings": list(self.snapshot.scan_warnings),
+            },
             "snapshot": {
                 "data_root": str(self.snapshot.data_root),
                 "nc": self.snapshot.nc,
@@ -78,6 +94,20 @@ class ValidationReport:
                 "splits": list(self.snapshot.splits),
                 "total_images": self.snapshot.total_images,
                 "scan_warnings": list(self.snapshot.scan_warnings),
+            },
+            "validation_result": {
+                "overall_severity": self.overall_severity,
+                "exit_code": self.exit_code,
+                "checks": [
+                    {
+                        "name": r.name,
+                        "severity": r.severity,
+                        "passed": r.passed,
+                        "summary": r.summary,
+                        "details": r.details,
+                    }
+                    for r in self.results
+                ],
             },
             "results": [
                 {

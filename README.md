@@ -6,11 +6,10 @@
 
 ```
 ODPlatform/
-├── apps/platform/     # 核心引擎 (odp_platform)
+├── apps/platform/     # 核心引擎 (odp_platform)；日志见 apps/platform/logs/
 ├── configs/           # 手工配置
 ├── data/              # 数据集 (raw / processed)
 ├── docs/              # 设计文档 (ADR)
-├── logs/              # 运行时日志
 ├── models/            # 模型权重
 ├── runs/              # 训练输出
 ├── scripts/           # 工作区脚本

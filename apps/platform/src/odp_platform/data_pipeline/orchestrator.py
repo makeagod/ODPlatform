@@ -19,7 +19,7 @@ from odp_platform.data_pipeline.split.materializer import SplitOutputDirs, mater
 from odp_platform.data_pipeline.split.splitter import split_pairs
 from odp_platform.data_pipeline.split.yaml_writer import YoloYamlWriter
 
-logger = logging.getLogger("odp-platform")
+logger = logging.getLogger(__name__)
 
 
 class DataPipelineOrchestrator:

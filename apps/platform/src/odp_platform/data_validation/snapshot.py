@@ -1,15 +1,18 @@
 # -*- coding: utf-8 -*-
-"""DatasetSnapshot 一次扫描，best-effort 不抛异常。"""
+"""DatasetSnapshot — 一次扫描，多次复用（best-effort，不抛异常）。"""
 from __future__ import annotations
 
-from dataclasses import dataclass
+import logging
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import yaml
 
 from odp_platform.common.constants import IMAGE_EXTENSIONS, Task
 from odp_platform.common.performance_utils import time_it
+
+logger = logging.getLogger(__name__)
 
 _SPLIT_ORDER = ("train", "val", "test")
 
@@ -33,27 +36,73 @@ class DatasetSnapshot:
     images_per_split: Dict[str, Tuple[Path, ...]]
     labels_per_split: Dict[str, Tuple[Path, ...]]
     stats_per_split: Dict[str, SplitStats]
-    scan_warnings: Tuple[str, ...]
+    scan_warnings: Tuple[str, ...] = field(default_factory=tuple)
 
     @property
     def splits(self) -> Tuple[str, ...]:
-        present = [s for s in _SPLIT_ORDER if s in self.images_per_split]
-        extra = sorted(k for k in self.images_per_split if k not in _SPLIT_ORDER)
-        return tuple(present + extra)
+        return tuple(s for s in _SPLIT_ORDER if s in self.images_per_split)
 
     @property
     def total_images(self) -> int:
-        return sum(len(v) for v in self.images_per_split.values())
+        return sum(len(imgs) for imgs in self.images_per_split.values())
 
 
-def _normalize_names(names: Any) -> Tuple[str, ...]:
-    if names is None:
-        return ()
-    if isinstance(names, dict):
-        keys = sorted(names.keys(), key=lambda k: int(k) if str(k).isdigit() else str(k))
-        return tuple(str(names[k]) for k in keys)
-    if isinstance(names, list):
-        return tuple(str(n) for n in names)
+def _load_yaml(yaml_path: Path) -> Tuple[Dict[str, Any], Optional[str]]:
+    if not yaml_path.exists():
+        return {}, f"yaml 文件不存在: {yaml_path}"
+    try:
+        with open(yaml_path, encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+        if not isinstance(data, dict):
+            return {}, f"yaml 顶层不是 dict: {type(data).__name__}"
+        return data, None
+    except yaml.YAMLError as exc:
+        return {}, f"yaml 解析失败: {exc}"
+    except OSError as exc:
+        return {}, f"yaml 读取失败: {exc}"
+
+
+def _resolve_data_root(yaml_path: Path, yaml_data: Dict[str, Any]) -> Path:
+    path_str = yaml_data.get("path")
+    if not path_str:
+        return yaml_path.parent.resolve()
+    p = Path(str(path_str))
+    return p.resolve() if p.is_absolute() else (yaml_path.parent / p).resolve()
+
+
+def _resolve_split_dir(data_root: Path, split_field: Any) -> Optional[Path]:
+    if not isinstance(split_field, str) or not str(split_field).strip():
+        return None
+    p = Path(split_field)
+    return p.resolve() if p.is_absolute() else (data_root / p).resolve()
+
+
+def _list_images(split_dir: Path) -> List[Path]:
+    if not split_dir.is_dir():
+        return []
+    images: List[Path] = []
+    for ext in IMAGE_EXTENSIONS:
+        images.extend(split_dir.glob(f"*{ext}"))
+    return sorted({p.resolve() for p in images})
+
+
+def _label_path_for_image(image_path: Path) -> Path:
+    parts = list(image_path.parts)
+    for i in range(len(parts) - 1, -1, -1):
+        if parts[i] == "images":
+            parts[i] = "labels"
+            break
+    return Path(*parts[:-1]) / f"{image_path.stem}.txt"
+
+
+def _normalize_names(names_raw: Any) -> Tuple[str, ...]:
+    if isinstance(names_raw, list) and all(isinstance(n, str) for n in names_raw):
+        return tuple(names_raw)
+    if isinstance(names_raw, dict):
+        if all(isinstance(k, int) for k in names_raw) and all(
+            isinstance(v, str) for v in names_raw.values()
+        ):
+            return tuple(v for _, v in sorted(names_raw.items()))
     return ()
 
 
@@ -65,108 +114,74 @@ def _parse_nc(value: Any) -> Optional[int]:
     return None
 
 
-def _list_images(images_dir: Path) -> Tuple[Path, ...]:
-    if not images_dir.is_dir():
-        return ()
-    found: list[Path] = []
-    for ext in IMAGE_EXTENSIONS:
-        found.extend(images_dir.glob(f"*{ext}"))
-    return tuple(sorted({p.resolve() for p in found}))
-
-
-def _labels_dir_for(images_dir: Path) -> Path:
-    parts = list(images_dir.parts)
-    if parts and parts[-1].lower() == "images":
-        return Path(*parts[:-1]) / "labels"
-    return images_dir.parent / "labels"
-
-
-def _count_label_stats(label_paths: Tuple[Path, ...]) -> SplitStats:
+def _build_split_stats(images: List[Path], labels: List[Path]) -> SplitStats:
     annotated = 0
     instances = 0
-    for lp in label_paths:
-        if not lp.is_file():
+    for lbl in labels:
+        if not lbl.exists():
             continue
         try:
-            text = lp.read_text(encoding="utf-8").strip()
+            content = lbl.read_text(encoding="utf-8")
         except OSError:
             continue
-        if text:
-            annotated += 1
-            instances += len([ln for ln in text.splitlines() if ln.strip()])
+        lines = [ln for ln in content.splitlines() if ln.strip()]
+        if not lines:
+            continue
+        annotated += 1
+        instances += len(lines)
     return SplitStats(
-        image_count=0,
+        image_count=len(images),
         annotated_count=annotated,
         total_instances=instances,
     )
 
 
 @time_it(name="build_snapshot")
-def build_snapshot(yaml_path: Path, task_type: Optional[str] = None) -> DatasetSnapshot:
-    yaml_data: Dict[str, Any] = {}
-    yaml_load_error: Optional[str] = None
-    scan_warnings: list[str] = []
+def build_snapshot(
+    yaml_path: Path,
+    task_type: Optional[str] = None,
+) -> DatasetSnapshot:
+    yaml_path = yaml_path.resolve()
+    warnings: List[str] = []
 
-    if not yaml_path.exists():
-        yaml_load_error = f"YAML 文件不存在: {yaml_path}"
-    else:
-        try:
-            raw = yaml_path.read_text(encoding="utf-8")
-            loaded = yaml.safe_load(raw)
-            if loaded is None:
-                yaml_data = {}
-            elif isinstance(loaded, dict):
-                yaml_data = loaded
-            else:
-                yaml_load_error = f"YAML 顶层类型非法: {type(loaded).__name__}"
-        except yaml.YAMLError as exc:
-            yaml_load_error = str(exc)
+    yaml_data, yaml_err = _load_yaml(yaml_path)
+    if yaml_err:
+        warnings.append(yaml_err)
 
-    resolved_task = task_type or str(yaml_data.get("task", Task.DETECT))
-    if resolved_task not in (Task.DETECT, Task.SEGMENT):
-        resolved_task = Task.DETECT
-
-    data_root = Path(str(yaml_data.get("path", yaml_path.parent)))
-    if not data_root.is_absolute():
-        data_root = (yaml_path.parent / data_root).resolve()
-
+    data_root = _resolve_data_root(yaml_path, yaml_data)
     nc = _parse_nc(yaml_data.get("nc"))
     class_names = _normalize_names(yaml_data.get("names"))
+
+    resolved_task = task_type or yaml_data.get("task") or Task.DETECT
+    if resolved_task not in (Task.DETECT, Task.SEGMENT):
+        warnings.append(f"未知 task_type '{resolved_task}', 回退到 '{Task.DETECT}'")
+        resolved_task = Task.DETECT
 
     images_per_split: Dict[str, Tuple[Path, ...]] = {}
     labels_per_split: Dict[str, Tuple[Path, ...]] = {}
     stats_per_split: Dict[str, SplitStats] = {}
 
     for split in _SPLIT_ORDER:
-        rel = yaml_data.get(split)
-        if not rel:
-            continue
-        images_dir = (data_root / str(rel)).resolve()
-        if not images_dir.is_dir():
-            scan_warnings.append(f"{split}: 图像目录不存在 {images_dir}")
-            images_per_split[split] = ()
-            labels_per_split[split] = ()
-            stats_per_split[split] = SplitStats(0, 0, 0)
+        split_dir = _resolve_split_dir(data_root, yaml_data.get(split))
+        if split_dir is None or not split_dir.is_dir():
+            if split in yaml_data:
+                warnings.append(f"split '{split}' 目录不可用: {split_dir}")
             continue
 
-        images = _list_images(images_dir)
-        labels_dir = _labels_dir_for(images_dir)
-        label_paths = tuple(
-            (labels_dir / f"{img.stem}.txt").resolve() for img in images
-        )
-        label_stats = _count_label_stats(label_paths)
-        stats_per_split[split] = SplitStats(
-            image_count=len(images),
-            annotated_count=label_stats.annotated_count,
-            total_instances=label_stats.total_instances,
-        )
-        images_per_split[split] = images
-        labels_per_split[split] = label_paths
+        images = _list_images(split_dir)
+        if not images:
+            warnings.append(f"split '{split}' 目录下无图像: {split_dir}")
+            continue
 
-    return DatasetSnapshot(
-        yaml_path=yaml_path.resolve(),
+        labels = [_label_path_for_image(img) for img in images]
+        images_per_split[split] = tuple(images)
+        labels_per_split[split] = tuple(labels)
+        stats_per_split[split] = _build_split_stats(images, labels)
+
+    snapshot = DatasetSnapshot(
+        yaml_path=yaml_path,
         yaml_data=yaml_data,
-        yaml_load_error=yaml_load_error,
+        yaml_load_error=yaml_err,
         data_root=data_root,
         nc=nc,
         class_names=class_names,
@@ -174,5 +189,12 @@ def build_snapshot(yaml_path: Path, task_type: Optional[str] = None) -> DatasetS
         images_per_split=images_per_split,
         labels_per_split=labels_per_split,
         stats_per_split=stats_per_split,
-        scan_warnings=tuple(scan_warnings),
+        scan_warnings=tuple(warnings),
     )
+    logger.info(
+        "snapshot 构建完成: %d 张图像, splits=%s, task=%s",
+        snapshot.total_images,
+        list(snapshot.splits),
+        resolved_task,
+    )
+    return snapshot

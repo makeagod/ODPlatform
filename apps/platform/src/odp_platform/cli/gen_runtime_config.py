@@ -8,8 +8,8 @@ import logging
 import sys
 from pathlib import Path
 
-from odp_platform.common.logging_utils import get_logger
-from odp_platform.common.paths import LOGGING_DIR, runtime_config_path
+from odp_platform.logging import setup_cli_logging
+from odp_platform.common.paths import runtime_config_path
 from odp_platform.runtime_config.template import generate_config_template
 
 logger = logging.getLogger(__name__)
@@ -43,7 +43,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def main(argv=None) -> int:
     args = _build_parser().parse_args(argv)
-    get_logger(base_path=LOGGING_DIR, log_type="config_gen")
+    setup_cli_logging("config_gen")
 
     out = args.output or runtime_config_path(args.task)
     try:

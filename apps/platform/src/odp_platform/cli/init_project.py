@@ -20,10 +20,10 @@ if str(src_dir) not in sys.path:
     sys.path.insert(0, str(src_dir))
 
 # 引入项目底层三大基础设施工具 (确保你的文件夹名字叫 common)
-from odp_platform.common.logging_utils import get_logger
+from odp_platform.logging import setup_cli_logging
 from odp_platform.common.string_utils import format_table_row, format_table_separator
 from odp_platform.common.performance_utils import time_it
-from odp_platform.common.paths import ROOT_DIR, LOGGING_DIR, RAW_DATA_DIR, get_dirs_to_initialize
+from odp_platform.common.paths import ROOT_DIR, RAW_DATA_DIR, get_dirs_to_initialize
 
 LINE_WIDTH = 60
 logger = logging.getLogger(__name__)
@@ -61,11 +61,7 @@ def initialize_project() -> None:
     :return: None
     """
     # 优先装配并启动日志系统
-    get_logger(
-        base_path=LOGGING_DIR,
-        log_type="init_project",
-        temp_log=False,
-    )
+    setup_cli_logging("init_project")
 
     logger.info(f"{' 开始初始化项目结构 ':#^{LINE_WIDTH}}")
     logger.info(f"当前项目根目录: {ROOT_DIR}")

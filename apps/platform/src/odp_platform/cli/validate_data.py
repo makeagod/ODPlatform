@@ -7,8 +7,8 @@ import logging
 import sys
 from pathlib import Path
 
-from odp_platform.common.logging_utils import get_logger
-from odp_platform.common.paths import LOGGING_DIR, dataset_yaml_path
+from odp_platform.logging import setup_cli_logging
+from odp_platform.common.paths import dataset_yaml_path
 from odp_platform.data_validation.render import render_to_logger
 from odp_platform.data_validation.service import validate_dataset
 
@@ -36,7 +36,7 @@ def _build_parser() -> argparse.ArgumentParser:
 def main() -> None:
     args = _build_parser().parse_args()
     level = logging.DEBUG if args.verbose else logging.INFO
-    get_logger(base_path=LOGGING_DIR, log_type="data_validation", log_level=level)
+    setup_cli_logging("data_validation", log_level=level)
 
     if args.dataset:
         yaml_path = dataset_yaml_path(args.dataset)

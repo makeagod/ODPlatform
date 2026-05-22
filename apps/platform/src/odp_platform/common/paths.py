@@ -64,9 +64,9 @@ TRAIN_LABELS_DIR: Path = TRAIN_DIR / "labels"
 TEST_LABELS_DIR: Path = TEST_DIR / "labels"
 VAL_LABELS_DIR: Path = VAL_DIR / "labels"
 
-# 【端私有资产】只属于platform这个端的资产文件
+# 【端私有资产】只属于 platform 端的资产（日志、端内元数据等）
 CONFIGS_DIR: Path = ROOT_DIR / "configs"
-LOGGING_DIR: Path = ROOT_DIR / "logs"
+LOGGING_DIR: Path = APP_DIR / "logs"
 UNIT_TEST_DIR: Path = ROOT_DIR / "tests"
 
 # 顶层的文档目录[共享给所有人]
@@ -76,9 +76,9 @@ DOCS_DIR: Path = ROOT_DIR / "docs"
 SCRIPTS_DIR: Path = ROOT_DIR / "scripts"
 
 # ==========================
-# 定义工具的元目录数据， 工具自身的日志
-# ========================
-META_DIR: Path = ROOT_DIR / ".odp-meta"
+# 端内元工具目录（reset 审计日志等，reset 清理 logs/ 时保留）
+# ==========================
+META_DIR: Path = APP_DIR / ".odp-meta"
 META_LOGGING_DIR: Path = META_DIR / "logs"
 
 
@@ -110,8 +110,16 @@ def runtime_config_path(task: str, filename: str | None = None) -> Path:
 
 
 def dataset_yaml_path(dataset_name: str) -> Path:
-    """D3 产出的 Ultralytics 训练 YAML 路径。"""
-    return DATASET_CONFIGS_DIR / f"{dataset_name}.yaml"
+    """D3 产出的 Ultralytics 训练 YAML 路径（存在则返回首个命中）。"""
+    candidates = [
+        DATASET_CONFIGS_DIR / f"{dataset_name}.yaml",
+        APP_DIR / "configs" / "datasets" / f"{dataset_name}.yaml",
+        DATA_DIR / f"{dataset_name}.yaml",
+    ]
+    for path in candidates:
+        if path.exists():
+            return path.resolve()
+    return candidates[0].resolve()
 
 
 def validation_run_dir(run_id: str) -> Path:
@@ -184,6 +192,7 @@ PROTECTED_DIRS: tuple[Path, ...] = (
     CONFIGS_DIR,
     ROOT_DIR / ".git",
     ROOT_DIR / ".odp-workspace",
+    APP_DIR / "logs",
     META_DIR,
     META_LOGGING_DIR,
 )

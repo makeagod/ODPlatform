@@ -61,11 +61,14 @@ runs/
 # 转换临时目录
 data/temp/
 
-# 端私有日志
-logs/
+# platform 端运行日志与元工具目录
+apps/platform/logs/**
+!apps/platform/logs/README.md
+apps/platform/.odp-meta/
 *.log
 
-# 元工具审计日志
+# 旧版根目录日志（迁移后遗留）
+logs/
 .odp-meta/
 
 # ============================================================

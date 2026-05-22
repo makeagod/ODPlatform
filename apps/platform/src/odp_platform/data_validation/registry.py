@@ -51,7 +51,7 @@ class CheckContext:
     """check 统一入参；扩展只加字段，不改各 check 函数签名。"""
 
     yaml_path: Path
-    snapshot: DatasetSnapshot | None = None
+    snapshot: DatasetSnapshot
 
 
 CheckFunc = Callable[[CheckContext], CheckResult]

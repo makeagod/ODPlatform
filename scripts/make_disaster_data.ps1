@@ -28,17 +28,18 @@ New-Item -ItemType Directory -Force -Path "runs/exp_2026_05_10/tb_logs" | Out-Nu
 }
 Write-Host "  ✅ runs/exp_2026_05_10/tb_logs/ — 5000 个小文件(大量 inode)"
 
-# 4. logs/ 一些已存在日志(撞墙⑤的舞台)
-New-Item -ItemType Directory -Force -Path "logs/training/2026-05-10" | Out-Null
+# 4. apps/platform/logs/ 一些已存在日志(撞墙⑤的舞台)
+$platLogs = "apps/platform/logs/training/2026-05-10"
+New-Item -ItemType Directory -Force -Path $platLogs | Out-Null
 1..50 | ForEach-Object {
-    "training run $_ log content" | Set-Content "logs/training/2026-05-10/run-$_.log"
+    "training run $_ log content" | Set-Content "$platLogs/run-$_.log"
 }
-Write-Host "  ✅ logs/ — 50 份训练日志"
+Write-Host "  ✅ apps/platform/logs/ — 50 份训练日志"
 
 Write-Host ""
 Write-Host "🎬 灾难现场准备就绪。"
 Write-Host "   总文件数:约 5650"
 Write-Host "   总名义大小:约 2 GB(磁盘实际占用 < 100 MB,得益于稀疏文件)"
-Get-ChildItem data/raw, runs, logs -Recurse -ErrorAction SilentlyContinue |
+Get-ChildItem data/raw, runs, apps/platform/logs -Recurse -ErrorAction SilentlyContinue |
     Measure-Object -Property Length -Sum |
     ForEach-Object { Write-Host ("   当前占用: {0:N2} MB" -f ($_.Sum / 1MB)) }

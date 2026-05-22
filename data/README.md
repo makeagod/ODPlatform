@@ -21,4 +21,5 @@ data/
 
 - `models/` — 预训练权重与 checkpoints
 - `runs/` — 训练运行输出
-- `.odp-meta/` — 工具审计日志
+- `apps/platform/logs/` — platform 运行日志
+- `apps/platform/.odp-meta/` — 元工具审计日志（如 odp-reset）

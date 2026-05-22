@@ -16,9 +16,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-from odp_platform.common.logging_utils import get_logger
+from odp_platform.logging import setup_audit_logging
 from odp_platform.common.paths import (
-    META_LOGGING_DIR,
     PRETRAINED_MODELS_DIR,
     RAW_DATA_DIR,
     ROOT_DIR,
@@ -27,11 +26,7 @@ from odp_platform.common.paths import (
 )
 from odp_platform.common.string_utils import format_table_row, format_table_separator
 
-logger = get_logger(
-    base_path=META_LOGGING_DIR,
-    log_type="reset_project",
-    temp_log=False,
-)
+logger = setup_audit_logging("reset_project")
 
 CONFIRM_KEYWORD = "RESET"
 LINE_WIDTH = 70

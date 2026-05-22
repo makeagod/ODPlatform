@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git status *)",
+      "Bash(echo \"EXIT:$?\")",
+      "Bash(git *)",
+      "Bash(echo \"ignored:$?\")",
+      "Bash(python *)",
+      "Bash(odp-init *)",
+      "Bash(odp-reset)",
+      "Bash(odp-transform --dataset rsod --format pascal_voc)",
+      "Bash(odp-validate --dataset rsod --task detect)"
+    ]
+  }
+}

@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
-"""check: label_format — YOLO 标签行格式（detect / segment）。"""
+"""label_format — 验证每行 .txt 格式（detect / segment）。"""
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Dict, List, Tuple
+from collections import Counter
+from typing import Any, Dict, List, Optional, Tuple
 
 from odp_platform.common.constants import DETAILS_PREVIEW_LIMIT, Task
 from odp_platform.data_validation.registry import (
@@ -13,141 +13,111 @@ from odp_platform.data_validation.registry import (
     check,
 )
 
-ERR_FIELD_COUNT = "field_count_mismatch"
-ERR_PARSE = "parse_error"
-ERR_CLASS = "class_id_out_of_range"
-ERR_COORD = "coord_out_of_range"
-ERR_POLY = "polygon_too_few_points"
-
-
-def _validate_detect_line(parts: List[str], nc: int) -> str | None:
-    if len(parts) != 5:
-        return ERR_FIELD_COUNT
-    try:
-        cls = int(parts[0])
-        coords = [float(x) for x in parts[1:]]
-    except ValueError:
-        return ERR_PARSE
-    if cls < 0 or cls >= nc:
-        return ERR_CLASS
-    if any(c < 0 or c > 1 for c in coords):
-        return ERR_COORD
-    return None
-
-
-def _validate_segment_line(parts: List[str], nc: int) -> str | None:
-    if len(parts) < 8 or (len(parts) - 1) % 2 != 0:
-        return ERR_FIELD_COUNT
-    try:
-        cls = int(parts[0])
-        coords = [float(x) for x in parts[1:]]
-    except ValueError:
-        return ERR_PARSE
-    n_points = len(coords) // 2
-    if n_points < 3:
-        return ERR_POLY
-    if cls < 0 or cls >= nc:
-        return ERR_CLASS
-    if any(c < 0 or c > 1 for c in coords):
-        return ERR_COORD
-    return None
-
-
-def _scan_label_file(
-    label_path: Path,
-    task: str,
-    nc: int,
-) -> Tuple[int, List[Dict[str, object]]]:
-    errors: List[Dict[str, object]] = []
-    total_lines = 0
-    if not label_path.is_file():
-        return 0, errors
-    try:
-        text = label_path.read_text(encoding="utf-8")
-    except OSError as exc:
-        return 0, [
-            {
-                "file": label_path.name,
-                "line": 0,
-                "error_kind": ERR_PARSE,
-                "message": str(exc),
-            }
-        ]
-    for line_no, line in enumerate(text.splitlines(), start=1):
-        stripped = line.strip()
-        if not stripped:
-            continue
-        total_lines += 1
-        parts = stripped.split()
-        if task == Task.SEGMENT:
-            kind = _validate_segment_line(parts, nc)
-        else:
-            kind = _validate_detect_line(parts, nc)
-        if kind:
-            errors.append(
-                {
-                    "file": label_path.name,
-                    "line": line_no,
-                    "error_kind": kind,
-                }
-            )
-    return total_lines, errors
+KIND_FIELD_COUNT_MISMATCH = "field_count_mismatch"
+KIND_PARSE_ERROR = "parse_error"
+KIND_CLASS_ID_OUT_OF_RANGE = "class_id_out_of_range"
+KIND_COORD_OUT_OF_RANGE = "coord_out_of_range"
+KIND_POLYGON_TOO_FEW = "polygon_too_few_points"
 
 
 @check("label_format")
 def validate_label_format(ctx: CheckContext) -> CheckResult:
     snap = ctx.snapshot
-    nc = snap.nc
 
-    if nc is None or nc <= 0:
+    if snap.nc is None or snap.nc <= 0:
         return CheckResult(
             name="label_format",
             severity=CheckSeverity.INFO,
-            summary="nc 无效，跳过 label_format（由 yaml_schema 负责）",
-            details={"task_type": snap.task_type, "skipped": True},
+            summary="缺少合法 nc, 跳过 label_format (yaml_schema 应已报告)",
+            details={"reason": "nc_unavailable"},
         )
 
+    task_type = snap.task_type
+    errors: List[Dict[str, Any]] = []
+    error_kinds: Counter = Counter()
     total_lines = 0
-    total_errors = 0
-    error_kinds: Dict[str, int] = {}
-    errors_preview: List[Dict[str, object]] = []
 
-    for split in snap.splits:
-        for lbl in snap.labels_per_split.get(split, ()):
-            if not lbl.is_file():
+    for _split, labels in snap.labels_per_split.items():
+        for lbl in labels:
+            if not lbl.exists():
                 continue
-            lines, errs = _scan_label_file(lbl, snap.task_type, nc)
-            total_lines += lines
-            total_errors += len(errs)
-            for e in errs:
-                kind = str(e["error_kind"])
-                error_kinds[kind] = error_kinds.get(kind, 0) + 1
-                if len(errors_preview) < DETAILS_PREVIEW_LIMIT:
-                    errors_preview.append(e)
+            try:
+                content = lbl.read_text(encoding="utf-8")
+            except OSError:
+                continue
+            for line_no, line in enumerate(content.splitlines(), 1):
+                line = line.strip()
+                if not line:
+                    continue
+                total_lines += 1
+                err = _validate_one_line(line, task_type, snap.nc)
+                if err is not None:
+                    kind, detail = err
+                    error_kinds[kind] += 1
+                    if len(errors) < DETAILS_PREVIEW_LIMIT:
+                        errors.append({
+                            "label": str(lbl),
+                            "line_no": line_no,
+                            "kind": kind,
+                            "detail": detail,
+                        })
 
-    if total_errors == 0:
+    if not error_kinds:
         return CheckResult(
             name="label_format",
             severity=CheckSeverity.PASS,
-            summary=f"共 {total_lines} 行标签格式合法",
-            details={
-                "task_type": snap.task_type,
-                "total_lines": total_lines,
-                "total_errors": 0,
-                "error_kinds": error_kinds,
-                "errors_preview": [],
-            },
+            summary=f"全部 {total_lines} 行标签格式正确 (task={task_type})",
+            details={"task_type": task_type, "total_lines": total_lines},
         )
 
+    total_errors = sum(error_kinds.values())
     return CheckResult(
         name="label_format",
         severity=CheckSeverity.ERROR,
-        summary=f"发现 {total_errors} 处标签格式错误",
+        summary=f"{total_errors}/{total_lines} 行标签格式错误 (task={task_type})",
         details={
-            "task_type": snap.task_type,
+            "task_type": task_type,
             "total_lines": total_lines,
             "total_errors": total_errors,
-            "error_kinds": error_kinds,
-            "errors_preview": errors_preview,
+            "error_kinds": dict(error_kinds),
+            "errors_preview": errors,
         },
     )
+
+
+def _validate_one_line(line: str, task_type: str, nc: int) -> Optional[Tuple[str, str]]:
+    parts = line.split()
+
+    if task_type == Task.DETECT:
+        if len(parts) != 5:
+            return KIND_FIELD_COUNT_MISMATCH, f"detect 要求 5 字段, 实际 {len(parts)}"
+        try:
+            cls_id = int(parts[0])
+            coords = [float(x) for x in parts[1:5]]
+        except ValueError as exc:
+            return KIND_PARSE_ERROR, f"字段类型错: {exc}"
+        if not (0 <= cls_id < nc):
+            return KIND_CLASS_ID_OUT_OF_RANGE, f"cls_id={cls_id} 不在 [0,{nc})"
+        if not all(0.0 <= c <= 1.0 for c in coords):
+            bad = [round(c, 4) for c in coords if not (0.0 <= c <= 1.0)]
+            return KIND_COORD_OUT_OF_RANGE, f"坐标越界 [0,1]: {bad}"
+        return None
+
+    if task_type == Task.SEGMENT:
+        if len(parts) < 7 or (len(parts) - 1) % 2 != 0:
+            if len(parts) < 7:
+                return KIND_POLYGON_TOO_FEW, f"segment 至少 3 点 (7 字段), 实际 {len(parts)}"
+            return KIND_FIELD_COUNT_MISMATCH, f"segment 字段数应为 1+2N, 实际 {len(parts)}"
+        try:
+            cls_id = int(parts[0])
+            coords = [float(x) for x in parts[1:]]
+        except ValueError as exc:
+            return KIND_PARSE_ERROR, f"字段类型错: {exc}"
+        if not (0 <= cls_id < nc):
+            return KIND_CLASS_ID_OUT_OF_RANGE, f"cls_id={cls_id} 不在 [0,{nc})"
+        if not all(0.0 <= c <= 1.0 for c in coords):
+            bad_count = sum(1 for c in coords if not (0.0 <= c <= 1.0))
+            return KIND_COORD_OUT_OF_RANGE, f"{bad_count}/{len(coords)} 个坐标越界 [0,1]"
+        return None
+
+    return KIND_PARSE_ERROR, f"未知 task_type: {task_type}"

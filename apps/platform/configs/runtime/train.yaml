@@ -1,84 +1,113 @@
 ---
-# ODPlatform 运行配置模板 — train
-# 生成时间: 2026-05-22T09:19:21
-# 说明: 编辑下方 YAML 块；字段说明见 catalog 注释
+# ODPlatform 运行配置 — train
+# 生成时间: 2026-05-22（手工优化可读性版）
+#
+# 使用方式:
+#   1. 按下方分组修改参数（★ 标记项建议优先填写）
+#   2. Python: build_train_config(yaml_path='apps/platform/configs/runtime/train.yaml')
+#   3. 数据集: 先 odp-transform，再 odp-validate --dataset rsod --task detect
 
-# ----- 字段 catalog -----
-# == augment ==
-# [augment] mosaic — Mosaic 增强概率
-#   默认: 1.0
-# [augment] close_mosaic — 最后 N epoch 关闭 mosaic
-#   默认: 10
-# == data ==
-# [data] data — 数据集 YAML 路径（Ultralytics data 参数）
-#   示例: configs/datasets/rsod.yaml
-#   默认: ''
-# == meta ==
-# [meta] task — 任务语义 (detect/segment)，受平台词汇约束
-#   示例: detect, segment
-#   建议: 命名实验请用 experiment_id，不要用 task 字段
-#   默认: 'detect'
-# [meta] experiment_id — 实验标识，仅用于平台目录归档，不传给 Ultralytics
-#   示例: rsod_baseline_v1, helmet_aug_test
-#   默认: ''
-# == model ==
-# [model] model — 预训练权重或 checkpoint 路径
-#   示例: yolo11n.pt, runs/detect/train/weights/best.pt
-#   默认: 'yolo11n.pt'
-# == train ==
-# [train] epochs — 训练轮数
-#   示例: 50, 100, 300
-#   默认: 100
-# [train] imgsz — 输入图像尺寸
-#   示例: 640, 1280
-#   默认: 640
-# [train] batch — 批次大小；-1 为自动
-#   示例: 16, 32, -1
-#   默认: 16
-# [train] device — 训练设备，如 0 或 cpu
-#   示例: 0, cpu, 0,1
-#   默认: ''
-# [train] workers — DataLoader 工作进程数
-#   默认: 8
-# [train] lr0 — 初始学习率
-#   默认: 0.01
-# [train] project — Ultralytics project 目录
-#   默认: 'runs/detect'
-# [train] name — 本次运行名称
-#   默认: 'train'
-# [train] save — 是否保存 checkpoint
-#   默认: True
-# [train] save_period — 按 epoch 保存周期；-1 禁用周期保存
-#   默认: -1
-# [train] patience — 早停 patience
-#   默认: 100
-# [train] seed — 随机种子
-#   默认: 0
-# [train] verbose — 详细日志
-#   默认: True
+# ============================================================================
+# 元信息（平台）
+# ============================================================================
 
+# task: 任务语义 (detect/segment)，受平台词汇约束
+#   常用值: detect, segment
+#   提示: 命名实验请用 experiment_id，不要用 task 字段
 task: detect
-experiment_id: ''
-data: ''
+
+# experiment_id: 实验标识，仅用于平台目录归档，不传给 Ultralytics
+#   常用值: rsod_baseline_v1, helmet_aug_test
+# ★ experiment_id
+experiment_id: rsod_baseline_v1
+
+
+# ============================================================================
+# 数据集
+# ============================================================================
+
+# data: 数据集 YAML 路径（Ultralytics data 参数）
+#   常用值: data/processed/rsod.yaml, apps/platform/configs/datasets/rsod.yaml
+# ★ data
+data: data/processed/rsod.yaml
+
+
+# ============================================================================
+# 模型权重
+# ============================================================================
+
+# model: 预训练权重或 checkpoint 路径
+#   常用值: yolo11n.pt, runs/detect/train/weights/best.pt
+# ★ model
 model: yolo11n.pt
+
+
+# ============================================================================
+# 训练超参
+# ============================================================================
+
+# epochs: 训练轮数
+#   常用值: 50, 100, 300
 epochs: 100
+
+# imgsz: 输入图像尺寸
+#   常用值: 640, 1280
 imgsz: 640
+
+# batch: 批次大小；-1 为自动
+#   常用值: 16, 32, -1
 batch: 16
-device: ''
+
+# device: 训练设备，如 0 或 cpu
+#   常用值: 0, cpu, 0,1
+device: "0"
+
+# workers: DataLoader 工作进程数
 workers: 8
+
+# lr0: 初始学习率
 lr0: 0.01
+
+# project: Ultralytics project 目录
 project: runs/detect
-name: train
+
+# name: 本次运行名称（会出现在 runs/detect/<name>/ 下）
+name: rsod_train
+
+# save: 是否保存 checkpoint
 save: true
+
+# save_period: 按 epoch 保存周期；-1 表示不按周期额外保存
 save_period: -1
+
+# patience: 早停 patience（无提升则停止）
 patience: 100
-seed: 0
+
+# seed: 随机种子（复现实验时固定）
+seed: 42
+
+# verbose: 是否输出详细日志
 verbose: true
+
+
+# ============================================================================
+# 数据增强
+# ============================================================================
+
+# mosaic: Mosaic 增强概率 (0.0~1.0)
 mosaic: 1.0
+
+# close_mosaic: 最后 N 个 epoch 关闭 mosaic
 close_mosaic: 10
 
-# --- 常见问题 ---
-# Q: 配置文件不存在怎么办？
-# A: 使用 odp-config-gen 生成本模板，编辑后再用于训练/验证/推理。
-# Q: 参数最终值来自哪里？
-# A: 默认 命令行 > YAML > 代码默认值（可在 build_config 调用时调整）。
+# ---------------------------------------------------------------------------
+# 常见问题
+# ---------------------------------------------------------------------------
+# Q: 这个文件是干什么的？
+# A: 训练/验证/推理的运行参数。改完后用 build_train_config(yaml_path=...) 加载。
+#
+# Q: 参数最终以谁为准？
+# A: 默认优先级 — 命令行 > 本 YAML > 代码默认值。
+#
+# Q: 文件丢了怎么办？
+# A: 运行 odp-config-gen --task train 重新生成（加 --force 会备份旧文件）。

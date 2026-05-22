@@ -14,8 +14,7 @@ import sys
 from typing import List, Optional
 
 from odp_platform.common.constants import AnnotationFormat, Task
-from odp_platform.common.logging_utils import get_logger
-from odp_platform.common.paths import LOGGING_DIR
+from odp_platform.logging import setup_cli_logging
 from odp_platform.data_pipeline import DatasetPipeline, list_capabilities
 
 logger = logging.getLogger(__name__)
@@ -81,7 +80,7 @@ def _capability_matrix_text() -> str:
 def main(argv: Optional[List[str]] = None) -> int:
     args = _build_parser().parse_args(argv)
 
-    get_logger(base_path=LOGGING_DIR, log_type="transform")
+    setup_cli_logging("transform")
 
     try:
         result = DatasetPipeline(
