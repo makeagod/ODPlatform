@@ -1,0 +1,58 @@
+---
+# ODPlatform 运行配置模板 — predict
+# 生成时间: 2026-05-22T10:06:08
+# 说明: 编辑下方 YAML 块；字段说明见 catalog 注释
+
+# ----- 字段 catalog -----
+# == data ==
+# [data] data — 数据集 YAML 路径（Ultralytics data 参数）
+#   示例: configs/datasets/rsod.yaml
+#   默认: ''
+# == meta ==
+# [meta] task — 任务语义 (detect/segment)，受平台词汇约束
+#   示例: detect, segment
+#   建议: 命名实验请用 experiment_id，不要用 task 字段
+#   默认: 'detect'
+# [meta] experiment_id — 实验标识，仅用于平台目录归档，不传给 Ultralytics
+#   示例: rsod_baseline_v1, helmet_aug_test
+#   默认: ''
+# == model ==
+# [model] model — 预训练权重或 checkpoint 路径
+#   示例: yolo11n.pt, runs/detect/train/weights/best.pt
+#   默认: 'yolo11n.pt'
+# == predict ==
+# [predict] imgsz — 推理图像尺寸
+#   默认: 640
+# [predict] conf — 置信度阈值
+#   默认: 0.25
+# [predict] iou — NMS IoU 阈值
+#   默认: 0.7
+# [predict] device — 设备
+#   默认: ''
+# [predict] project — project 目录
+#   默认: 'runs/detect'
+# [predict] name — 运行名称
+#   默认: 'predict'
+# [predict] save — 是否保存预测结果
+#   默认: True
+# [predict] verbose — 详细日志
+#   默认: True
+
+task: detect
+experiment_id: ''
+data: ''
+model: yolo11n.pt
+imgsz: 640
+conf: 0.25
+iou: 0.7
+device: ''
+project: runs/detect
+name: predict
+save: true
+verbose: true
+
+# --- 常见问题 ---
+# Q: 配置文件不存在怎么办？
+# A: 使用 odp-config-gen 生成本模板，编辑后再用于训练/验证/推理。
+# Q: 参数最终值来自哪里？
+# A: 默认 命令行 > YAML > 代码默认值（可在 build_config 调用时调整）。

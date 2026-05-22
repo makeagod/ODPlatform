@@ -107,5 +107,10 @@ def initialize_project() -> None:
     logger.info("=" * LINE_WIDTH)
 
 
-if __name__ == "__main__":
+def main() -> None:
+    """CLI 入口 (odp-init)。"""
     initialize_project()
+
+
+if __name__ == "__main__":
+    main()

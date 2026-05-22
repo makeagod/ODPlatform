@@ -8,17 +8,14 @@
 ```
 data/
 ├── raw/<dataset>/          # 原始数据 (如 RSOD 的 Annotations + JPEGImages)
-├── processed/<dataset>/    # odp-transform 输出 (自动生成)
-├── train/ val/ test/       # 镜像到训练目录 (odp-transform 自动同步)
-├── temp/                   # 转换临时文件
-└── rsod.yaml               # 可选: 训练配置副本 (主配置在 apps/platform/configs/datasets/)
+├── processed/<dataset>/    # odp-transform 输出 (包含 <dataset>.yaml 训练配置)
 ```
 
 ## 获取 RSOD 示例数据
 
 1. 下载 RSOD 数据集到 `data/raw/rsod/`
 2. 运行: `odp-transform --dataset rsod --format pascal_voc`
-3. 训练配置: `apps/platform/configs/datasets/rsod.yaml`
+3. 训练配置: `data/processed/rsod.yaml` (由 odp-transform 自动生成)
 
 ## 其他路径（同样在 .gitignore 中）
 

@@ -7,10 +7,14 @@
 ```
 ODPlatform/
 ├── apps/platform/     # 核心引擎 (odp_platform)
-├── data/              # 数据集
+├── configs/           # 手工配置
+├── data/              # 数据集 (raw / processed)
+├── docs/              # 设计文档 (ADR)
+├── logs/              # 运行时日志
 ├── models/            # 模型权重
 ├── runs/              # 训练输出
 ├── scripts/           # 工作区脚本
+├── tests/             # 测试
 └── pyproject.toml     # 工作区工具配置 (ruff / pytest)
 ```
 

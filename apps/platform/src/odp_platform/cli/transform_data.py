@@ -1,127 +1,112 @@
-# -*- coding: utf-8 -*-
-"""
-阶段 9: odp-transform 命令行 CLI 交互入口 (终极防御版)
-"""
+#!/usr/bin/env python
+# -*- coding:utf-8 -*-
+# @FileName  :transform_data.py
+# @Time      :2026/5/21 15:18:02
+# @Author    :雨霓同学
+# @Project   :ODPlatform
+# @Function  :
+"""odp-transform 命令——D3 端到端 CLI。"""
+from __future__ import annotations
+
 import argparse
+import logging
 import sys
-from pathlib import Path
+from typing import List, Optional
 
+from odp_platform.common.constants import AnnotationFormat, Task
 from odp_platform.common.logging_utils import get_logger
-from odp_platform.data_pipeline import (
-    DataPipelineOrchestrator,
-    get_pipeline_capabilities,
-    ConvertOptions,
-)
+from odp_platform.common.paths import LOGGING_DIR
+from odp_platform.data_pipeline import DatasetPipeline, list_capabilities
 
-logger = get_logger("odp-transform")
+logger = logging.getLogger(__name__)
 
 
-class SafeHelpFormatter(argparse.RawTextHelpFormatter):
-    """
-    🛠️ 终极防御型格式化器：
-    重写底层拓展机制，强制让 argparse 放弃对所有文本进行 % 占位符格式化，
-    彻底杜绝 ValueError: unsupported format character 崩溃。
-    """
-    def _expand_help(self, action):
-        if action.help:
-            # 强行将单百分号转义，防止底层执行 % params 报错
-            return action.help.replace('%', '%%')
-        return super()._expand_help(action)
-
-
-def _format_capability_matrix() -> str:
-    """实时将注册表中的格式和能力格式化输出，用于追加到 help 帮助文档末尾"""
-    capabilities = get_pipeline_capabilities()
-    matrix_str = "\n=========================================\n"
-    matrix_str += "  当前平台支持的数据格式与能力矩阵:\n"
-    matrix_str += "-----------------------------------------\n"
-    for fmt, tasks in capabilities.items():
-        tasks_joined = ", ".join(tasks)
-        matrix_str += f"  - {fmt:<12} -> 支持任务: [{tasks_joined}]\n"
-    matrix_str += "========================================="
-    return matrix_str
-
-
-def main():
-    # 1. 创建使用终极安全格式化器的 ArgumentParser
+def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="ODPlatform 数据转换与智能切分流水线工具",
-        formatter_class=SafeHelpFormatter,  # 👈 挂载我们的黄金防弹盾牌
-        epilog=_format_capability_matrix()
+        prog="odp-transform",
+        description=(
+            "ODPlatform 数据集转换 + 划分工具。\n"
+            "把 data/raw/<dataset>/{images,annotations}/ 转换、划分,\n"
+            "并生成 ultralytics 训练用的 <dataset>.yaml。"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=_capability_matrix_text(),
     )
+    parser.add_argument(
+        "--dataset", "-d", required=True,
+        help="数据集名 (= data/raw/ 下的子目录名)",
+    )
+    parser.add_argument(
+        "--format", "-f", required=True,
+        choices=list(AnnotationFormat.all()),
+        help="原始标注格式",
+    )
+    parser.add_argument(
+        "--task", "-t", default=Task.DETECT,
+        choices=list(Task.all()),
+        help="任务类型 (默认 detect)",
+    )
+    parser.add_argument("--train-rate", type=float, default=0.8)
+    parser.add_argument(
+        "--val-rate", type=float, default=0.1,
+        help="(test 自动 = 1 - train - val)",
+    )
+    parser.add_argument(
+        "--classes", nargs="+", default=None,
+        help="类别白名单 (YOLO 格式必传),示例如下: --classes 0 1 2 3",
+    )
+    parser.add_argument(
+        "--random-state", type=int, default=42,
+        help="随机种子 (会写入 yaml 的 odp_meta)",
+    )
+    parser.add_argument(
+        "--coco-cls91to80", action="store_true",
+        help="(COCO 专属) 91 类映射到 80 类",
+    )
+    return parser
 
-    # 2. 注入命令行参数规范
-    parser.add_argument(
-        "--dataset",
-        type=str,
-        required=True,
-        help="待转换的原始数据集名称（必须存放在 data/raw/<名字> 下）"
-    )
-    parser.add_argument(
-        "--format",
-        type=str,
-        required=True,
-        help="原始数据集的标注格式（例如: pascal_voc, coco, yolo）"
-    )
-    parser.add_argument(
-        "--train-ratio",
-        type=float,
-        default=0.8,
-        help="训练集切分比例 [默认: 0.8, 与课程 rsod.yaml 一致]"
-    )
-    parser.add_argument(
-        "--val-ratio",
-        type=float,
-        default=0.1,
-        help="验证集切分比例 [默认: 0.1]"
-    )
-    parser.add_argument(
-        "--test-ratio",
-        type=float,
-        default=0.1,
-        help="测试集切分比例 [默认: 0.1]"
-    )
-    parser.add_argument(
-        "--seed",
-        type=int,
-        default=42,
-        help="随机种子，确保切分结果100复现 [默认: 42]"
-    )
 
-    args = parser.parse_args()
+def _capability_matrix_text() -> str:
+    """生成 --help 末尾的能力矩阵——从 registry 实时读。"""
+    try:
+        caps = list_capabilities()
+    except Exception:
+        return ""
+    lines = ["格式能力矩阵:"]
+    for fmt, tasks in caps.items():
+        lines.append(f"  {fmt:<15} -> {tasks}")
+    return "\n".join(lines)
 
-    logger.info("=" * 50)
-    logger.info(f"[START] 数据准备流水线 | 数据集: {args.dataset}")
-    logger.info("=" * 50)
+
+def main(argv: Optional[List[str]] = None) -> int:
+    args = _build_parser().parse_args(argv)
+
+    get_logger(base_path=LOGGING_DIR, log_type="transform")
 
     try:
-        options = ConvertOptions(random_state=args.seed)
-        orchestrator = DataPipelineOrchestrator(
+        result = DatasetPipeline(
             dataset_name=args.dataset,
-            raw_format=args.format,
-            options=options
-        )
+            annotation_format=args.format,
+            task=args.task,
+            train_rate=args.train_rate,
+            val_rate=args.val_rate,
+            classes=args.classes,
+            coco_cls91to80=args.coco_cls91to80,
+            random_state=args.random_state,
+        ).run()
+        logger.info("成功完成: %s", result)
+        return 0
 
-        yaml_path = orchestrator.run_pipeline(
-            train_ratio=args.train_ratio,
-            val_ratio=args.val_ratio,
-            test_ratio=args.test_ratio
-        )
-
-        logger.info("=" * 50)
-        logger.info("[OK] 流水线完成，数据处理成功")
-        logger.info(f"[OK] YOLO 数据集: data/processed/{args.dataset}/")
-        logger.info(f"[OK] 训练配置 YAML: {yaml_path}")
-        logger.info("=" * 50)
-        sys.exit(0)
-
-    except ValueError as ve:
-        logger.error(f"[FAIL] 业务逻辑或合规检查未通过: {ve}")
-        sys.exit(1)
-    except Exception as e:
-        logger.error(f"[FAIL] 流水线执行期间发生致命错误: {e}")
-        sys.exit(1)
+    except (ValueError, NotImplementedError) as e:
+        logger.error("参数/能力错误: %s", e)
+        return 1
+    except FileNotFoundError as e:
+        logger.error("数据集问题: %s", e)
+        return 2
+    except Exception:
+        logger.exception("未预期异常")
+        return 3
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

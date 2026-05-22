@@ -62,7 +62,7 @@ runs/
 data/temp/
 
 # 端私有日志
-apps/platform/logging/
+logs/
 *.log
 
 # 元工具审计日志
@@ -82,7 +82,6 @@ apps/platform/logging/
 *.tar.gz
 
 # 本地参考/工具（勿提交）
-_ref_data_pipeline/
 bfg-*.jar
 main.py
 

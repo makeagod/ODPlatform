@@ -1,22 +1,69 @@
+# apps/platform/pyproject.toml
+# =============================================================================
+# ODPlatform - platform 端配置 (hatchling backend)
+# =============================================================================
+
+[build-system]
+requires = ["hatchling>=1.18.0"]
+build-backend = "hatchling.build"
+
+
 [project]
 name = "odp-platform"
-version = "0.1.0"
-description = "ODPlatform Platform Management System"
+dynamic = ["version"]
+description = "ODPlatform - 目标检测开发平台核心引擎"
 readme = "README.md"
 requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "ODPlatform Team" },
+]
+keywords = ["object-detection", "yolo", "deep-learning", "ml-platform"]
 
-# 1. 系统底层与 D3 阶段所需的全部依赖大件（合并在一个列表里）
-dependencies = [
-    "click>=8.0",
-    "scikit-learn>=1.0",
-    "ultralytics>=8.0",
-    "pyyaml>=6.0",
-    "pillow>=9.0",
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 
-# 2. 挂载我们平台的三个核心入口点命令（完美并存）
+dependencies = [
+    "colorlog>=6.7.0",
+    "ultralytics>=8,<9.0",
+    "scikit-learn>=1.0",
+    "pillow>=9.0",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "ruff>=0.1.0",
+    "mypy>=1.5.0",
+]
+
+
+# =============================================================================
+# Entry-point Scripts (PEP 621)
+# =============================================================================
 [project.scripts]
-odp-init = "odp_platform.cli.init_project:main"
+odp-init = "odp_platform.cli.init_project:initialize_project"
 odp-reset = "odp_platform.cli.reset_project:main"
 odp-transform = "odp_platform.cli.transform_data:main"
 odp-validate = "odp_platform.cli.validate_data:main"
+odp-config-gen = "odp_platform.cli.gen_runtime_config:main"
+
+
+# =============================================================================
+# Hatchling
+# =============================================================================
+[tool.hatch.build.targets.wheel]
+packages = ["src/odp_platform"]
+
+[tool.hatch.version]
+path = "src/odp_platform/_version.py"

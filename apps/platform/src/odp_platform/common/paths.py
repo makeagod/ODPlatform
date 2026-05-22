@@ -65,9 +65,9 @@ TEST_LABELS_DIR: Path = TEST_DIR / "labels"
 VAL_LABELS_DIR: Path = VAL_DIR / "labels"
 
 # 【端私有资产】只属于platform这个端的资产文件
-CONFIGS_DIR: Path = APP_DIR / "configs"
-LOGGING_DIR: Path = APP_DIR / "logging"
-UNIT_TEST_DIR: Path = APP_DIR / "tests"
+CONFIGS_DIR: Path = ROOT_DIR / "configs"
+LOGGING_DIR: Path = ROOT_DIR / "logs"
+UNIT_TEST_DIR: Path = ROOT_DIR / "tests"
 
 # 顶层的文档目录[共享给所有人]
 DOCS_DIR: Path = ROOT_DIR / "docs"
@@ -89,14 +89,24 @@ META_LOGGING_DIR: Path = META_DIR / "logs"
 # 转换后 YOLO 格式数据集的最终落地根目录 (data/processed/)
 PROCESSED_DATA_DIR: Path = ROOT_DIR / "data" / "processed"
 
-# 自动生成的 Ultralytics 训练配置 YAML 文件的存放目录 (apps/platform/configs/datasets/)
-DATASET_CONFIGS_DIR: Path = ROOT_DIR / "apps" / "platform" / "configs" / "datasets"
+# 自动生成的 Ultralytics 训练配置 YAML 文件的存放目录 (data/processed/)
+DATASET_CONFIGS_DIR: Path = PROCESSED_DATA_DIR
 
 # 转换期间临时中转目录（给像 COCO converter 这种需要临时组装 JSON 的模块用）
 TRANSFORM_TEMP_DIR: Path = ROOT_DIR / "data" / "temp"
 
 # D4 data_validation 运行产物
 VALIDATION_RUNS_DIR: Path = RUNS_DIR / "data_validation"
+
+# 运行配置子系统 (训练/验证/推理 YAML)
+RUNTIME_CONFIGS_DIR: Path = CONFIGS_DIR / "runtime"
+
+
+def runtime_config_path(task: str, filename: str | None = None) -> Path:
+    """解析运行配置路径。filename 省略时按 task 推导 train.yaml 等。"""
+    if filename is None:
+        filename = f"{task}.yaml"
+    return RUNTIME_CONFIGS_DIR / filename
 
 
 def dataset_yaml_path(dataset_name: str) -> Path:
@@ -140,6 +150,7 @@ def get_dirs_to_initialize() -> List[Path]:
         DATASET_CONFIGS_DIR,
         TRANSFORM_TEMP_DIR,
         VALIDATION_RUNS_DIR,
+        RUNTIME_CONFIGS_DIR,
     ]
 
 

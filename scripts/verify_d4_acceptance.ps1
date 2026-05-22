@@ -39,7 +39,7 @@ try {
 }
 
 Write-Host "`n=== 7.3 / 7.5 pytest ==="
-python -m pytest apps/platform/tests/data_validation -q
+python -m pytest tests/data_validation -q
 if ($LASTEXITCODE -ne 0) { throw "pytest failed" }
 
 Write-Host "`n=== safety_helmet pipeline ==="

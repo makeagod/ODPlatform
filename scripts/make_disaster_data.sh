@@ -28,15 +28,15 @@ for i in $(seq 1 5000); do
 done
 echo "  ✅ runs/exp_2026_05_10/tb_logs/ — 5000 个小文件(大量 inode)"
 
-# 4. apps/platform/logging/ 一些已存在日志(撞墙⑤的舞台)
-mkdir -p apps/platform/logging/training/2026-05-10
+# 4. logs/ 一些已存在日志(撞墙⑤的舞台)
+mkdir -p logs/training/2026-05-10
 for i in $(seq 1 50); do
-    echo "training run $i log content" > "apps/platform/logging/training/2026-05-10/run-${i}.log"
+    echo "training run $i log content" > "logs/training/2026-05-10/run-${i}.log"
 done
-echo "  ✅ apps/platform/logging/ — 50 份训练日志"
+echo "  ✅ logs/ — 50 份训练日志"
 
 echo ""
 echo "🎬 灾难现场准备就绪。"
 echo "   总文件数:约 5650"
 echo "   总名义大小:约 2 GB(磁盘实际占用 < 100 MB,得益于稀疏文件)"
-du -sh data/raw runs apps/platform/logging 2>/dev/null || true
+du -sh data/raw runs logs 2>/dev/null || true

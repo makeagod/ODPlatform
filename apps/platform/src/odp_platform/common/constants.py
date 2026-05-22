@@ -7,10 +7,18 @@ class AnnotationFormat:
     COCO = "coco"
     YOLO = "yolo"
 
+    @classmethod
+    def all(cls) -> list[str]:
+        return [cls.PASCAL_VOC, cls.COCO, cls.YOLO]
+
 
 class Task:
     DETECT = "detect"
     SEGMENT = "segment"
+
+    @classmethod
+    def all(cls) -> list[str]:
+        return [cls.DETECT, cls.SEGMENT]
 
 
 # 兼容旧代码字符串别名

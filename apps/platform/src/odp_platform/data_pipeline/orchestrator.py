@@ -187,11 +187,4 @@ class DataPipelineOrchestrator:
         mirror_counts = self._mirror_split_to_data_dir(processed_root)
         logger.info(f"[OK] data/train 已载入 {mirror_counts.get('train', 0)} 张")
 
-        YoloYamlWriter(paths.DATA_DIR).write_dataset_config(
-            dataset_name=self.dataset_name,
-            processed_root_dir=paths.DATA_DIR,
-            classes=self._final_classes,
-            metadata=metadata,
-        )
-
         return config_path
