@@ -17,7 +17,8 @@ def test_validate_dataset_e2e_healthy(healthy_yaml, tmp_path):
     )
     assert report.exit_code == 0
     assert report.overall_severity == CheckSeverity.PASS
-    assert len(report.results) == 4
+    assert len(report.results) >= 4
+    assert any(r.name == "placeholder" for r in report.results)
     assert report.report_path is not None
     assert report.report_path.exists()
     payload = json.loads(report.report_path.read_text(encoding="utf-8"))

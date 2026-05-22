@@ -156,6 +156,57 @@ def test_ac19_preview_skips_validation(tmp_path):
 
 def test_ac20_ultralytics_kwargs():
     cfg = build_train_config()
-    kw = cfg.to_ultralytics_kwargs()
+    kw = cfg.to_backend_kwargs("ultralytics")
     assert "experiment_id" not in kw
     assert "epochs" in kw
+
+
+def test_ac21_mmdetection_adapter():
+    cfg = build_train_config(cli_overrides={
+        "epochs": 50, "batch": 8, "lr0": 0.001, "seed": 42,
+        "imgsz": 640, "workers": 4, "patience": 10,
+        "project": "runs/mmdet", "name": "exp_01",
+    })
+    kw = cfg.to_backend_kwargs("mmdetection")
+
+    # 嵌套结构存在
+    assert kw["train_dataloader"]["batch_size"] == 8
+    assert kw["train_dataloader"]["num_workers"] == 4
+    assert kw["val_dataloader"]["batch_size"] == 8
+    assert kw["optim_wrapper"]["optimizer"]["lr"] == 0.001
+    assert kw["optim_wrapper"]["optimizer"]["type"] == "SGD"
+    assert kw["train_cfg"]["max_epochs"] == 50
+    assert kw["randomness"]["seed"] == 42
+    assert kw["train_pipeline"]["img_scale"] == (640, 640)
+    assert kw["test_pipeline"]["img_scale"] == (640, 640)
+    assert kw["work_dir"].replace("\\", "/") == "runs/mmdet/exp_01"
+
+    # patience 映射为 early_stop_patience
+    assert kw["param_scheduler"]["early_stop_patience"] == 10
+
+
+def test_ac22_adapter_registry():
+    from odp_platform.runtime_config.adapters import get_adapter, register_adapter
+
+    # 内置适配器
+    assert get_adapter("ultralytics").backend_name == "ultralytics"
+    assert get_adapter("mmdetection").backend_name == "mmdetection"
+
+    # 未知后端
+    import pytest
+    with pytest.raises(ValueError, match="未知后端类型"):
+        get_adapter("nonexistent")
+
+    # 自定义注册
+    from odp_platform.runtime_config.adapters import BaseBackendAdapter
+
+    class DummyAdapter(BaseBackendAdapter):
+        @property
+        def backend_name(self) -> str:
+            return "dummy"
+
+        def translate(self, runtime_config):
+            return {"dummy": True}
+
+    register_adapter("dummy", DummyAdapter())
+    assert get_adapter("dummy").backend_name == "dummy"

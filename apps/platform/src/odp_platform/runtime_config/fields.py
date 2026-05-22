@@ -53,3 +53,57 @@ class TaskSchema:
 
     def known_names(self) -> frozenset[str]:
         return frozenset(f.name for f in self.fields)
+
+
+def _infer_type(value: Any) -> str:
+    """从默认值推断字段的 JSON 类型名。"""
+    if isinstance(value, bool):
+        return "boolean"
+    if isinstance(value, int):
+        return "integer"
+    if isinstance(value, float):
+        return "number"
+    if isinstance(value, str):
+        return "string"
+    return "string"
+
+
+def _field_spec_to_dict(spec: FieldSpec) -> dict[str, Any]:
+    """将单个 FieldSpec 转为适合 LLM 消费的纯字典。"""
+    entry: dict[str, Any] = {
+        "name": spec.name,
+        "type": _infer_type(spec.default),
+        "default": spec.default,
+        "description": spec.description,
+        "group": spec.group,
+    }
+    if spec.choices:
+        entry["choices"] = list(spec.choices)
+    if spec.min_value is not None:
+        entry["min_value"] = spec.min_value
+    if spec.max_value is not None:
+        entry["max_value"] = spec.max_value
+    if spec.examples:
+        entry["examples"] = list(spec.examples)
+    if spec.tuning_tips:
+        entry["tuning_tips"] = list(spec.tuning_tips)
+    return entry
+
+
+def get_all_field_specs(task_kind: str | None = None) -> dict[str, list[dict[str, Any]]]:
+    """导出全部或指定任务的字段规格，用于外部消费（如 LLM prompt 注入）。
+
+    Args:
+        task_kind: 若为 None 则返回所有任务；否则只返回指定任务。
+
+    Returns:
+        {task_kind: [field_spec_dict, ...], ...}
+    """
+    from odp_platform.runtime_config.schemas import SCHEMAS
+
+    tasks = [task_kind] if task_kind else list(SCHEMAS.keys())
+    result: dict[str, list[dict[str, Any]]] = {}
+    for tk in tasks:
+        schema = SCHEMAS[tk]
+        result[tk] = [_field_spec_to_dict(f) for f in schema.fields]
+    return result

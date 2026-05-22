@@ -27,7 +27,7 @@ def test_duplicate_check_registration_raises():
     def _a(ctx):
         return CheckResult(name, CheckSeverity.PASS, "ok", {})
 
-    with pytest.raises(ValueError, match="已注册"):
+    with pytest.raises(ValueError, match="重复注册"):
 
         @check(name)
         def _b(ctx):
@@ -47,9 +47,9 @@ def test_run_all_checks_isolates_exceptions(healthy_yaml):
     snap = build_snapshot(healthy_yaml)
     ctx = CheckContext(yaml_path=healthy_yaml, snapshot=snap)
 
-    from odp_platform.data_validation.registry import _ensure_checks_imported
+    from odp_platform.data_validation.registry import _ensure_initialized
 
-    _ensure_checks_imported()
+    _ensure_initialized()
     old = _REGISTRY["yaml_schema"]
 
     def boom(_ctx):
@@ -66,7 +66,7 @@ def test_run_all_checks_isolates_exceptions(healthy_yaml):
     assert err.severity == CheckSeverity.ERROR
     assert err.details.get("exception_type") == "KeyError"
     others = [r for r in results if r.name != "yaml_schema"]
-    assert all(r.severity in CheckSeverity._ORDER for r in others)
+    assert all(r.severity in CheckSeverity._ORDER for r in others)  # noqa: private access
 
 
 def test_list_checks_auto_import():

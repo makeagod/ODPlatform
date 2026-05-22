@@ -20,19 +20,17 @@ class RuntimeConfig:
     def get(self, name: str, default: Any = None) -> Any:
         return self.values.get(name, default)
 
-    def to_ultralytics_kwargs(self) -> Dict[str, Any]:
-        """过滤空值与框架内部字段 (FR-22)。"""
-        out: Dict[str, Any] = {}
-        internal = self.schema.internal_fields
-        for key, val in self.values.items():
-            if key in internal:
-                continue
-            if val is None:
-                continue
-            if val == "" and key not in ("device",):
-                continue
-            out[key] = val
-        return out
+    def to_backend_kwargs(self, backend_type: str = "ultralytics") -> Dict[str, Any]:
+        """通过适配器将配置翻译为目标框架的原生参数字典。
+
+        Args:
+            backend_type: 后端标识，如 ``"ultralytics"`` / ``"mmdetection"``。
+                          可通过 ``register_adapter()`` 扩展。
+        """
+        from odp_platform.runtime_config.adapters import get_adapter
+
+        adapter = get_adapter(backend_type)
+        return adapter.translate(self)
 
     def snapshot(self) -> Dict[str, Any]:
         return {"task_kind": self.task_kind, "values": dict(self.values)}

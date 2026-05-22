@@ -5,6 +5,9 @@ from odp_platform.data_validation.registry import (
     CheckResult,
     CheckSeverity,
     check,
+    get_all_checks,
+    get_check,
+    list_check_names,
     list_checks,
 )
 from odp_platform.data_validation.report import ValidationReport
@@ -19,6 +22,9 @@ __all__ = [
     "DatasetSnapshot",
     "SplitStats",
     "check",
+    "get_all_checks",
+    "get_check",
+    "list_check_names",
     "list_checks",
     "build_snapshot",
     "run_all_checks",
