@@ -17,6 +17,36 @@ data/
 2. 运行: `odp-transform --dataset rsod --format pascal_voc`
 3. 训练配置: `data/processed/rsod.yaml` (由 odp-transform 自动生成)
 
+## VOC2028（PASCAL VOC，已接入示例）
+
+原始数据在 `D:\VOC2028` 时，可用目录联接（不占双倍磁盘）：
+
+```powershell
+# 在仓库根目录执行（仅需一次）
+cmd /c mklink /J "data\raw\voc2028" "D:\VOC2028"
+
+odp-transform --dataset voc2028 --format pascal_voc
+odp-validate --dataset voc2028 --task detect
+```
+
+- 处理后：`data/processed/voc2028.yaml`
+- 类别：`hat`, `person`, `dog`（3 类）
+- 划分：train 6065 / val 758 / test 758
+
+一键完成（解压→转换→质检）：
+
+```powershell
+.\scripts\setup_voc2028.ps1
+```
+
+训练：
+
+```powershell
+# 专用配置 configs/runtime/train_voc2028.yaml
+odp-train --yaml configs/runtime/train_voc2028.yaml --epochs 3 --batch 8 --device cpu
+odp-train --yaml configs/runtime/train_voc2028.yaml --device 0
+```
+
 ## 其他路径（同样在 .gitignore 中）
 
 - `models/` — 预训练权重与 checkpoints

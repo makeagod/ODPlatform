@@ -49,18 +49,7 @@ class UltralyticsAdapter(BaseBackendAdapter):
         return "ultralytics"
 
     def translate(self, runtime_config: RuntimeConfig) -> dict[str, Any]:
-        out: dict[str, Any] = {}
-        internal = runtime_config.schema.internal_fields
-        for key, val in runtime_config.values.items():
-            if key in internal:
-                continue
-            if val is None:
-                continue
-            if val == "" and key not in ("device",):
-                continue
-            # 字段映射：如平台内部用 lr 则映射为 Ultralytics 的 lr0
-            out[key] = val
-        return out
+        return runtime_config.to_yolo_config().to_ultralytics_kwargs()
 
 
 class MMDetectionAdapter(BaseBackendAdapter):

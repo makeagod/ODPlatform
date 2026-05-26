@@ -20,6 +20,13 @@ class RuntimeConfig:
     def get(self, name: str, default: Any = None) -> Any:
         return self.values.get(name, default)
 
+    def to_yolo_config(self) -> "BaseConfig":
+        """构建 Pydantic YOLO 配置（完整校验 + to_ultralytics_kwargs）。"""
+        from odp_platform.runtime_config.base import BaseConfig
+        from odp_platform.runtime_config.loader import build_yolo_config
+
+        return build_yolo_config(self.task_kind, self.values)
+
     def to_backend_kwargs(self, backend_type: str = "ultralytics") -> Dict[str, Any]:
         """通过适配器将配置翻译为目标框架的原生参数字典。
 

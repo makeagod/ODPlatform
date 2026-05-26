@@ -98,15 +98,19 @@ TRANSFORM_TEMP_DIR: Path = ROOT_DIR / "data" / "temp"
 # D4 data_validation 运行产物
 VALIDATION_RUNS_DIR: Path = RUNS_DIR / "data_validation"
 
-# 运行配置子系统 (训练/验证/推理 YAML)
+# D5 运行配置子系统 (训练/验证/推理 YAML)
 RUNTIME_CONFIGS_DIR: Path = CONFIGS_DIR / "runtime"
+# platform 端内模板副本（可选，与仓库根 configs/runtime 二选一或同步）
+APP_RUNTIME_CONFIGS_DIR: Path = APP_DIR / "configs" / "runtime"
 
 
-def runtime_config_path(task: str, filename: str | None = None) -> Path:
-    """解析运行配置路径。filename 省略时按 task 推导 train.yaml 等。"""
-    if filename is None:
-        filename = f"{task}.yaml"
-    return RUNTIME_CONFIGS_DIR / filename
+def runtime_config_path(name: str) -> Path:
+    """运行配置 YAML 路径：``configs/runtime/<name>.yaml``。
+
+    ``name`` 可带或不带 ``.yaml`` 后缀，例如 ``train`` 或 ``train.yaml``。
+    """
+    stem = name if name.endswith((".yaml", ".yml")) else f"{name}.yaml"
+    return RUNTIME_CONFIGS_DIR / stem
 
 
 def dataset_yaml_path(dataset_name: str) -> Path:
@@ -159,6 +163,7 @@ def get_dirs_to_initialize() -> List[Path]:
         TRANSFORM_TEMP_DIR,
         VALIDATION_RUNS_DIR,
         RUNTIME_CONFIGS_DIR,
+        APP_RUNTIME_CONFIGS_DIR,
     ]
 
 

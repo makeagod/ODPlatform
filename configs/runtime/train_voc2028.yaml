@@ -1,0 +1,26 @@
+---
+# VOC2028 训练配置（hat / person / dog，3 类）
+# 前置: scripts/setup_voc2028.ps1 或 odp-validate --dataset voc2028
+
+task: detect
+experiment_id: voc2028_baseline_v1
+
+data: data/processed/voc2028.yaml
+model: yolov8n.pt
+
+epochs: 50
+imgsz: 640
+batch: 16
+device: "0"
+workers: 8
+lr0: 0.01
+project: runs/detect
+name: voc2028_train
+save: true
+save_period: -1
+patience: 50
+seed: 42
+verbose: true
+
+mosaic: 1.0
+close_mosaic: 10

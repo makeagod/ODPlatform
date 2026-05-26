@@ -1,0 +1,164 @@
+# -*- coding: utf-8 -*-
+"""配置加载器：从不同来源装入 dict（不验证、不合并）。
+
+- :class:`YAMLLoader` — YAML 文件，不存在则 fail-fast + 修复指引
+- :class:`CLILoader` — 命令行 / dict，过滤控制字段并支持名映射
+- :func:`load_all_sources` — 一次性加载 yaml + cli 层
+
+字段校验 → Pydantic（``loader.build_yolo_config``）；多源合并 → ``merge_config``。
+"""
+from __future__ import annotations
+
+import logging
+from argparse import Namespace
+from pathlib import Path
+from typing import Any, Dict, List, Mapping, Optional, Union
+
+import yaml
+
+from odp_platform.common.paths import RUNTIME_CONFIGS_DIR
+
+logger = logging.getLogger(__name__)
+
+_GEN_CMD = "odp-config-gen --task {task} --output {path}"
+
+
+def drop_none_values(d: Mapping[str, Any]) -> Dict[str, Any]:
+    """过滤 None；保留 False / 0 / '' 等显式 falsy 值。"""
+    return {k: v for k, v in d.items() if v is not None}
+
+
+class YAMLLoader:
+    """加载 YAML 配置文件 → dict。
+
+    1. 路径：绝对 / 相对 / 仅文件名（相对 ``config_dir``）
+    2. 编码：UTF-8，失败则系统默认
+    3. 解析失败：fail-fast 并保留异常链
+    4. 文件不存在：fail-fast + ``odp-config-gen`` 指引
+    """
+
+    def __init__(self, config_dir: Optional[Union[str, Path]] = None):
+        self.config_dir = Path(config_dir) if config_dir else None
+
+    def load(self, filename: Union[str, Path]) -> Dict[str, Any]:
+        filepath = self._resolve_path(filename)
+
+        if not filepath.exists():
+            task_hint = filepath.stem if filepath.suffix else "train"
+            cmd = _GEN_CMD.format(task=task_hint, path=filepath.resolve())
+            raise FileNotFoundError(
+                f"YAML 配置文件不存在: {filepath.resolve()}\n\n"
+                f"请先生成默认配置模板:\n  {cmd}\n\n"
+                f"生成后编辑该文件再重新运行。"
+            )
+
+        try:
+            content = filepath.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            logger.warning("UTF-8 解码失败，尝试系统默认编码: %s", filepath)
+            content = filepath.read_text()
+
+        if not content.strip():
+            logger.debug("YAML 文件为空: %s", filepath)
+            return {}
+
+        try:
+            data = yaml.safe_load(content)
+        except yaml.YAMLError as e:
+            raise ValueError(
+                f"YAML 格式错误: {filepath}\n"
+                f"原始错误: {e}\n"
+                f"提示: 检查缩进、引号匹配、冒号后是否有空格。"
+            ) from e
+
+        if data is None:
+            return {}
+
+        if not isinstance(data, dict):
+            raise ValueError(
+                f"YAML 顶层必须是字典，当前是 {type(data).__name__}: {filepath}\n"
+                f"内容预览: {str(data)[:100]}"
+            )
+
+        return drop_none_values(data)
+
+    def _resolve_path(self, filename: Union[str, Path]) -> Path:
+        path = Path(filename)
+        if path.is_absolute():
+            return path
+        if self.config_dir:
+            return (self.config_dir / path).resolve()
+        return path.resolve()
+
+
+class CLILoader:
+    """加载命令行参数 → dict。"""
+
+    DEFAULT_EXCLUDE: set[str] = {
+        "help",
+        "config",
+        "cfg",
+        "yaml_path",
+        "yaml",
+        "output",
+        "force",
+        "no_backup",
+        "debug",
+        "version",
+        "task",
+    }
+
+    def __init__(
+        self,
+        exclude: Optional[List[str]] = None,
+        mapping: Optional[Dict[str, str]] = None,
+    ):
+        self.exclude = self.DEFAULT_EXCLUDE | set(exclude or [])
+        self.mapping = mapping or {}
+
+    def load(
+        self,
+        args: Optional[Union[Namespace, Dict[str, Any]]] = None,
+        filter_none: bool = True,
+    ) -> Dict[str, Any]:
+        if args is None:
+            return {}
+
+        if isinstance(args, Namespace):
+            raw = vars(args)
+        elif isinstance(args, dict):
+            raw = args
+        else:
+            raise TypeError(
+                f"args 必须是 argparse.Namespace 或 dict，"
+                f"当前是 {type(args).__name__}"
+            )
+
+        result: Dict[str, Any] = {}
+        for key, value in raw.items():
+            if key in self.exclude or key.startswith("_"):
+                continue
+            if filter_none and value is None:
+                continue
+            mapped_key = self.mapping.get(key, key)
+            result[mapped_key] = value
+        return result
+
+
+def load_all_sources(
+    yaml_path: Optional[Union[str, Path]] = None,
+    yaml_dir: Optional[Union[str, Path]] = None,
+    cli_args: Optional[Union[Namespace, Dict[str, Any]]] = None,
+    cli_exclude: Optional[List[str]] = None,
+    cli_mapping: Optional[Dict[str, str]] = None,
+) -> Dict[str, Dict[str, Any]]:
+    """一次性加载所有配置源 → ``{'yaml': ..., 'cli': ...}``（不做合并）。"""
+    yaml_config: Dict[str, Any] = {}
+    if yaml_path:
+        loader = YAMLLoader(config_dir=yaml_dir or RUNTIME_CONFIGS_DIR)
+        yaml_config = loader.load(yaml_path)
+
+    cli_loader = CLILoader(exclude=cli_exclude, mapping=cli_mapping)
+    cli_config = cli_loader.load(cli_args)
+
+    return {"yaml": yaml_config, "cli": cli_config}

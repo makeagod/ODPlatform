@@ -11,6 +11,7 @@ from odp_platform.data_validation.registry import (
     list_checks,
 )
 from odp_platform.data_validation.report import ValidationReport
+from odp_platform.data_validation.render import render_to_logger
 from odp_platform.data_validation.service import run_all_checks, validate_dataset
 from odp_platform.data_validation.snapshot import DatasetSnapshot, SplitStats, build_snapshot
 
@@ -29,4 +30,5 @@ __all__ = [
     "build_snapshot",
     "run_all_checks",
     "validate_dataset",
+    "render_to_logger",
 ]

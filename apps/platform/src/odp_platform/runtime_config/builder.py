@@ -9,7 +9,8 @@ from odp_platform.runtime_config.config_object import RuntimeConfig
 from odp_platform.runtime_config.merge import merge_config
 from odp_platform.runtime_config.provenance import ProvenanceReport
 from odp_platform.runtime_config.schemas import SCHEMAS
-from odp_platform.runtime_config.sources import load_cli_source, load_yaml_source, resolve_config_path
+from odp_platform.runtime_config.loaders import CLILoader
+from odp_platform.runtime_config.sources import load_yaml_source, resolve_config_path
 from odp_platform.runtime_config.validate import validate_config
 
 
@@ -37,7 +38,7 @@ def build_config(
         resolved = resolve_config_path(yaml_path, task_kind)
         layers["yaml"] = load_yaml_source(resolved, task_kind)
     if cli_overrides:
-        layers["cli"] = load_cli_source(cli_overrides)
+        layers["cli"] = CLILoader().load(cli_overrides)
     if extra_layers:
         for name, data in extra_layers:
             layers[name] = data
