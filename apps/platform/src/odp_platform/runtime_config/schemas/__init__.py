@@ -7,4 +7,5 @@ SCHEMAS = {
     "train": TRAIN_SCHEMA,
     "val": VAL_SCHEMA,
     "predict": PREDICT_SCHEMA,
+    "infer": PREDICT_SCHEMA,  # 与 odp-gen-config infer / infer.yaml 对齐
 }

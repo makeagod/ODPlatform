@@ -15,7 +15,7 @@
 
 ## 训练 (D6)
 
-讲义：`docs/D6-training-子系统.md`
+讲义：[docs/platform/D6-training-子系统.md](../../docs/platform/D6-training-子系统.md)
 
 ```powershell
 pip install -e .
@@ -33,3 +33,13 @@ odp-train --epochs 3 --batch 8 --device 0 --model yolov8n.pt --data rsod.yaml
 | `odp-train --no-pre-validate` | 跳过 D4 校验（不推荐） |
 
 权重放入 `models/pretrained/`（如 `yolov8n.pt`）；数据需先 `odp-transform` + `odp-validate`。
+
+## 推理 (D8)
+
+```powershell
+odp-gen-config infer
+odp-predict --model yolov8n.pt --source image.jpg --device cpu
+odp-predict --model best.pt --source 0 --show --camera-fps 30
+```
+
+`InferService` 编排 D5 + `frame_source` + ultralytics。讲义见 `docs/platform/D8-frame_source-铺垫.md`，示例见 `scripts/examples/frame_source/`。

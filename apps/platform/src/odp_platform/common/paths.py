@@ -100,8 +100,10 @@ VALIDATION_RUNS_DIR: Path = RUNS_DIR / "data_validation"
 
 # D5 运行配置子系统 (训练/验证/推理 YAML)
 RUNTIME_CONFIGS_DIR: Path = CONFIGS_DIR / "runtime"
-# platform 端内模板副本（可选，与仓库根 configs/runtime 二选一或同步）
-APP_RUNTIME_CONFIGS_DIR: Path = APP_DIR / "configs" / "runtime"
+# D3 数据集契约 yaml（可选；默认可用 data/processed/）
+CONFIGS_DATASETS_DIR: Path = CONFIGS_DIR / "datasets"
+# 兼容旧讲义路径 apps/platform/configs/runtime（已废弃，等同 RUNTIME_CONFIGS_DIR）
+APP_RUNTIME_CONFIGS_DIR: Path = RUNTIME_CONFIGS_DIR
 
 
 def runtime_config_path(name: str) -> Path:
@@ -117,6 +119,7 @@ def dataset_yaml_path(dataset_name: str) -> Path:
     """D3 产出的 Ultralytics 训练 YAML 路径（存在则返回首个命中）。"""
     candidates = [
         DATASET_CONFIGS_DIR / f"{dataset_name}.yaml",
+        CONFIGS_DATASETS_DIR / f"{dataset_name}.yaml",
         APP_DIR / "configs" / "datasets" / f"{dataset_name}.yaml",
         DATA_DIR / f"{dataset_name}.yaml",
     ]
@@ -163,6 +166,7 @@ def get_dirs_to_initialize() -> List[Path]:
         TRANSFORM_TEMP_DIR,
         VALIDATION_RUNS_DIR,
         RUNTIME_CONFIGS_DIR,
+        CONFIGS_DATASETS_DIR,
         APP_RUNTIME_CONFIGS_DIR,
     ]
 

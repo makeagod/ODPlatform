@@ -1,0 +1,25 @@
+---
+# ODPlatform 运行配置 — infer (推理)
+# 生成/更新: odp-gen-config infer
+
+task: detect
+experiment_name: null
+
+# ★ 必填（也可用 CLI 覆盖）
+model: yolo11n.pt
+source: null
+
+imgsz: 640
+conf: 0.25
+iou: 0.7
+device: cpu
+
+project: null
+name: null
+
+save: true
+save_txt: false
+show: false
+vid_stride: 1
+
+verbose: true

@@ -33,6 +33,7 @@ classifiers = [
 
 dependencies = [
     "colorlog>=6.7.0",
+    "opencv-python>=4.8.0",
     "pydantic>=2.0",
     "ultralytics>=8,<9.0",
     "scikit-learn>=1.0",
@@ -57,8 +58,11 @@ odp-init = "odp_platform.cli.init_project:initialize_project"
 odp-reset = "odp_platform.cli.reset_project:main"
 odp-transform = "odp_platform.cli.transform_data:main"
 odp-validate = "odp_platform.cli.validate_data:main"
+odp-gen-config = "odp_platform.runtime_config.generator:main"
 odp-config-gen = "odp_platform.cli.gen_runtime_config:main"
 odp-train = "odp_platform.cli.train_model:main"
+odp-val = "odp_platform.cli.val_model:main"
+odp-predict = "odp_platform.cli.predict_model:main"
 
 
 # =============================================================================

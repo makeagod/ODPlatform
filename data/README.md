@@ -11,6 +11,8 @@ data/
 ├── processed/<dataset>/    # odp-transform 输出 (包含 <dataset>.yaml 训练配置)
 ```
 
+数据集 yaml 的查找顺序见 [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md)（`data/processed/` → `configs/datasets/`）。
+
 ## 获取 RSOD 示例数据
 
 1. 下载 RSOD 数据集到 `data/raw/rsod/`

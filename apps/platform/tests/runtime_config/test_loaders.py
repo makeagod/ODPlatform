@@ -30,7 +30,7 @@ def test_yaml_loader_empty_file(tmp_path):
 def test_yaml_loader_missing_file(tmp_path):
     with pytest.raises(FileNotFoundError) as exc:
         YAMLLoader().load(tmp_path / "nope.yaml")
-    assert "odp-config-gen" in str(exc.value)
+    assert "odp-gen-config" in str(exc.value)
 
 
 def test_yaml_loader_bad_top_level(tmp_path):

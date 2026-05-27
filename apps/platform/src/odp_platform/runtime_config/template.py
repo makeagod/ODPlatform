@@ -39,7 +39,7 @@ _FAQ = """
 # A: 默认优先级 — 命令行 > 本 YAML > 代码默认值。
 #
 # Q: 文件丢了怎么办？
-# A: 运行 odp-config-gen --task train 重新生成（加 --force 会备份旧文件）。
+# A: 运行 odp-gen-config train 重新生成（加 --overwrite 会备份旧文件）。
 """
 
 

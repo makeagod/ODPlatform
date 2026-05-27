@@ -41,7 +41,7 @@ def test_ac04_missing_yaml(tmp_path):
     missing = tmp_path / "nope.yaml"
     with pytest.raises(ConfigFileNotFoundError) as exc:
         build_train_config(yaml_path=missing)
-    assert "odp-config-gen" in str(exc.value)
+    assert "odp-gen-config" in str(exc.value)
     assert str(missing.resolve()) in str(exc.value) or "不存在" in str(exc.value)
 
 

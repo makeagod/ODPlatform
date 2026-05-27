@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from odp_platform.common.paths import (
-    APP_RUNTIME_CONFIGS_DIR,
+    CONFIGS_DIR,
     ROOT_DIR,
     RUNTIME_CONFIGS_DIR,
     runtime_config_path,
@@ -15,7 +15,7 @@ from odp_platform.runtime_config.exceptions import (
     ConfigFileNotFoundError,
     ConfigParseError,
 )
-from odp_platform.runtime_config.loaders import CLILoader, YAMLLoader, _GEN_CMD
+from odp_platform.runtime_config.loaders import CLILoader, YAMLLoader, format_gen_cmd
 
 
 def resolve_config_path(path: str | Path, task: str) -> Path:
@@ -25,7 +25,7 @@ def resolve_config_path(path: str | Path, task: str) -> Path:
     if len(p.parts) == 1:
         stem = p.name if p.suffix else f"{task}.yaml"
         return runtime_config_path(stem)
-    for base in (RUNTIME_CONFIGS_DIR.parent, APP_RUNTIME_CONFIGS_DIR.parent, ROOT_DIR):
+    for base in (CONFIGS_DIR, RUNTIME_CONFIGS_DIR.parent, ROOT_DIR):
         candidate = (base / p).resolve()
         if candidate.exists():
             return candidate
@@ -39,7 +39,7 @@ def load_yaml_source(path: Path, task: str) -> Dict[str, Any]:
         return loader.load(path)
     except FileNotFoundError as exc:
         expected = Path(path).resolve()
-        cmd = _GEN_CMD.format(task=task, path=expected)
+        cmd = format_gen_cmd(task)
         raise ConfigFileNotFoundError(
             f"配置文件不存在: {expected}\n"
             f"不能静默继续。请执行:\n  {cmd}\n"

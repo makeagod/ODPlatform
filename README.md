@@ -2,61 +2,60 @@
 
 通用目标检测开发平台 (Monorepo)。
 
-## 目录结构
+**完整目录说明** → [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+
+## 目录结构（精简）
 
 ```
 ODPlatform/
-├── apps/platform/     # 核心引擎 (odp_platform)；日志见 apps/platform/logs/
-├── configs/           # 手工配置
-├── data/              # 数据集 (raw / processed)
-├── docs/              # 设计文档 (ADR)
-├── models/            # 模型权重
-├── runs/              # 训练输出
-├── scripts/           # 工作区脚本
-├── tests/             # 测试
-└── pyproject.toml     # 工作区工具配置 (ruff / pytest)
+├── apps/platform/          # 核心引擎 odp_platform（common / training / …）
+├── configs/                # 共享配置：runtime/ + datasets/
+├── data/                   # raw / processed / temp
+├── docs/                   # ARCHITECTURE + ADR + 课程讲义
+├── models/                 # pretrained / checkpoints
+├── runs/                   # 训练 / 验证 / D4 报告
+├── scripts/                # setup、数据集脚本
+├── tests/                  # 工作区级集成测试
+└── apps/platform/tests/    # 平台子系统单元测试
 ```
+
+## 子系统与命令（按课程日）
+
+| 日 | 模块 | 命令 |
+|----|------|------|
+| D3 | `data_pipeline` | `odp-transform` |
+| D4 | `data_validation` | `odp-validate` |
+| D5 | `runtime_config` | `odp-gen-config train` |
+| D6 | `training` | `odp-train` |
+| D7 | `evaluation` | `odp-val` |
+| D8 | `inference` + `frame_source` | `odp-predict` |
 
 ## 开发环境
 
 ```bash
-# 首次安装 (含依赖 + 注册 odp-init / odp-reset)
 pip install -r requirements-dev.txt
-
 # 或
-bash scripts/setup-dev.sh        # Git Bash / Linux
-.\scripts\setup-dev.ps1          # PowerShell
+bash scripts/setup-dev.sh
+.\scripts\setup-dev.ps1
 ```
 
-新增或修改 `pyproject.toml` 里的 `[project.scripts]` 后，刷新 CLI：
+刷新 CLI entry-points：
 
 ```bash
 pip install -e ./apps/platform --force-reinstall --no-deps
-# 或
-bash scripts/setup-dev.sh --reinstall-only
 ```
 
 ## 常用命令
 
 | 命令 | 说明 |
 |------|------|
-| `odp-init` | 创建项目所需目录结构 |
-| `odp-reset` | 预览可清理目录 (默认 dry-run) |
-| `odp-reset --yes` | 执行清理 (需输入 `RESET` 确认) |
-| `python scripts/reset_project.py` | 同上 (无需 pip install) |
+| `odp-init` | 创建项目目录结构 |
+| `odp-reset` | 预览可清理目录 |
+| `odp-gen-config train` | 生成 `configs/runtime/train.yaml` |
+| `odp-train` | 训练（默认读根目录 runtime 配置） |
 
-## D2.5 灾难现场 (测试 odp-reset)
-
-生成约 5650 个测试文件,用于演练 reset 保护逻辑与删除性能:
+## 测试
 
 ```bash
-bash scripts/make_disaster_data.sh      # Git Bash / Linux / macOS
-.\scripts\make_disaster_data.ps1        # Windows PowerShell
-```
-
-然后:
-
-```bash
-odp-reset              # 预览: raw 与 pretrained 应受保护
-odp-reset --yes        # 真正清理 (需输入 RESET)
+pytest    # 含 tests/ 与 apps/platform/tests/
 ```

@@ -7,6 +7,7 @@ from pathlib import Path
 
 from odp_platform.common.paths import (
     APP_DIR,
+    CONFIGS_DATASETS_DIR,
     DATASET_CONFIGS_DIR,
     dataset_yaml_path,
 )
@@ -25,6 +26,7 @@ def resolve_dataset_path(data: str | Path) -> Path:
 
     search_dirs = (
         DATASET_CONFIGS_DIR,
+        CONFIGS_DATASETS_DIR,
         APP_DIR / "configs" / "datasets",
     )
     if data_path.suffix in (".yaml", ".yml"):

@@ -20,7 +20,15 @@ from odp_platform.common.paths import RUNTIME_CONFIGS_DIR
 
 logger = logging.getLogger(__name__)
 
-_GEN_CMD = "odp-config-gen --task {task} --output {path}"
+_GEN_CMD = "odp-gen-config {task}"
+
+
+def format_gen_cmd(task_or_stem: str) -> str:
+    """fail-fast 修复指引用的命令（``predict`` → ``infer``）。"""
+    name = task_or_stem
+    if name == "predict":
+        name = "infer"
+    return _GEN_CMD.format(task=name)
 
 
 def drop_none_values(d: Mapping[str, Any]) -> Dict[str, Any]:
@@ -34,7 +42,7 @@ class YAMLLoader:
     1. 路径：绝对 / 相对 / 仅文件名（相对 ``config_dir``）
     2. 编码：UTF-8，失败则系统默认
     3. 解析失败：fail-fast 并保留异常链
-    4. 文件不存在：fail-fast + ``odp-config-gen`` 指引
+    4. 文件不存在：fail-fast + ``odp-gen-config`` 指引
     """
 
     def __init__(self, config_dir: Optional[Union[str, Path]] = None):
@@ -45,7 +53,7 @@ class YAMLLoader:
 
         if not filepath.exists():
             task_hint = filepath.stem if filepath.suffix else "train"
-            cmd = _GEN_CMD.format(task=task_hint, path=filepath.resolve())
+            cmd = format_gen_cmd(task_hint)
             raise FileNotFoundError(
                 f"YAML 配置文件不存在: {filepath.resolve()}\n\n"
                 f"请先生成默认配置模板:\n  {cmd}\n\n"

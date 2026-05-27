@@ -1,55 +1,41 @@
 ---
 # ODPlatform 运行配置模板 — val
-# 生成时间: 2026-05-22T10:05:52
-# 说明: 编辑下方 YAML 块；字段说明见 catalog 注释
+# D7 模型评估配置，字段对应 YOLOValConfig
 
-# ----- 字段 catalog -----
-# == data ==
-# [data] data — 数据集 YAML 路径（Ultralytics data 参数）
-#   示例: configs/datasets/rsod.yaml
-#   默认: ''
-# == meta ==
-# [meta] task — 任务语义 (detect/segment)，受平台词汇约束
-#   示例: detect, segment
-#   建议: 命名实验请用 experiment_id，不要用 task 字段
-#   默认: 'detect'
-# [meta] experiment_id — 实验标识，仅用于平台目录归档，不传给 Ultralytics
-#   示例: rsod_baseline_v1, helmet_aug_test
-#   默认: ''
-# == model ==
-# [model] model — 预训练权重或 checkpoint 路径
-#   示例: yolo11n.pt, runs/detect/train/weights/best.pt
-#   默认: 'yolo11n.pt'
-# == val ==
-# [val] imgsz — 验证图像尺寸
-#   默认: 640
-# [val] batch — 验证批次
-#   默认: 16
-# [val] device — 设备
-#   默认: ''
-# [val] split — 数据划分
-#   默认: 'val'
-# [val] project — project 目录
-#   默认: 'runs/detect'
-# [val] name — 运行名称
-#   默认: 'val'
-# [val] verbose — 详细日志
-#   默认: True
-
+# ----- 核心参数 -----
 task: detect
 experiment_id: ''
 data: ''
 model: yolo11n.pt
+
+# ----- 验证控制 -----
+split: val
+conf: 0.001
+iou: 0.6
+max_det: 300
+
+# ----- 输入配置 -----
 imgsz: 640
 batch: 16
-device: ''
-split: val
+workers: 8
+
+# ----- 设备配置 -----
+device: '0'
+amp: true
+
+# ----- 评估设置 -----
+half: true
+plots: true
+save_json: true
+save_hybrid: false
+
+# ----- 输出配置 -----
 project: runs/detect
 name: val
+exist_ok: false
 verbose: true
 
-# --- 常见问题 ---
-# Q: 配置文件不存在怎么办？
-# A: 使用 odp-config-gen 生成本模板，编辑后再用于训练/验证/推理。
-# Q: 参数最终值来自哪里？
-# A: 默认 命令行 > YAML > 代码默认值（可在 build_config 调用时调整）。
+# ----- 任务特定 -----
+mask_ratio: 4
+overlap_mask: true
+dnn: false
